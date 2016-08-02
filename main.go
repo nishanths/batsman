@@ -10,26 +10,26 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
+	"sync"
 )
 
 const versionString = "0.1.0"
-const usageString = `usage: styx [-http=<addr>] [-watch] [-workdir=<dir>] <command>`
+const usageString = `usage: styx [-exclude=<f1,f2>] [-http=<addr>] [-watch] [-workdir=<dir>] <command>`
 const helpString = usageString + `
 
 flags:
+  -exclude  comma-separated list of filename patterns to exclude in build (default: "")
   -http     http address to serve site (default: ":8080")
   -watch    whether to rebuild on changes while serving (default: "false")
-  -workdir  path to root directory (default: ".")
+  -workdir  path to site's root directory (default: ".")
 
 commands:
-  build    build site into "build" directory
-  clean    remove "build" directory
-  create   create new post or new page
-  help     print this help text
-  init     generate scaffolding for new site
+  build    generate site into "build" directory
+  create   create markdown file at specified path
+  init     initalize new site at specified path
   serve    serve "build" directory
-  summary  print site summary
-  version  print version`
+  summary  print site summary`
 
 var (
 	perm = struct {
@@ -37,6 +37,7 @@ var (
 	}{0644, 0755}
 
 	flags = struct {
+		Exclude []string
 		Http    string
 		Watch   bool
 		WorkDir string
@@ -49,6 +50,8 @@ var (
 )
 
 func main() {
+	var excl string
+	flag.StringVar(&excl, "exclude", "", "")
 	flag.StringVar(&flags.Http, "http", ":8080", "")
 	flag.BoolVar(&flags.Watch, "watch", false, "")
 	flag.StringVar(&flags.WorkDir, "workdir", ".", "")
@@ -60,6 +63,7 @@ func main() {
 		os.Exit(2)
 	}
 	flag.Parse()
+	flags.Exclude = strings.Split(excl, ",")
 
 	if flags.Help {
 		stdout.Println(helpString)
@@ -95,8 +99,6 @@ func main() {
 	switch command {
 	case "build":
 		do(build)
-	case "clean":
-		do(clean)
 	case "create":
 	case "init":
 		do(initialize)
@@ -161,19 +163,11 @@ func do(fn CmdFunc) {
 	os.Exit(0)
 }
 
-func build(_ ...string) error {
-	return nil
-}
-
-func clean(_ ...string) error {
-	return os.RemoveAll(path.Join(flags.WorkDir, "build"))
-}
-
-type InitError struct {
+type WrapError struct {
 	Err error
 }
 
-func (e InitError) Error() string {
+func (e WrapError) Error() string {
 	return fmt.Sprintf("styx: %s", e.Err.Error())
 }
 
@@ -193,43 +187,50 @@ func initialize(args ...string) error {
 
 	// Root path
 
-	if err := os.MkdirAll(root, perm.dir); err != nil {
+	if err := os.MkdirAll(path.Join(root, "src"), perm.dir); err != nil {
+		// TODO: Test this.
 		if os.IsExist(err) {
 			return fmt.Errorf("styx: path %q already exists")
 		}
-		return InitError{err}
-	}
-
-	// Directories
-
-	for _, p := range []string{"blog", "css"} {
-		if err := os.Mkdir(path.Join(root, p), perm.dir); err != nil {
-			return InitError{err}
-		}
+		return WrapError{err}
 	}
 
 	// Files
 
-	f, err := os.Create(filepath.Join(root, "index.html"))
-	if err != nil {
-		return InitError{err}
+	wg := sync.WaitGroup{}
+	errs := make(chan error, len(rawFiles))
+	for k, v := range rawFiles {
+		k, v := k, v
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- createFile(
+				filepath.Join(root, filepath.FromSlash(k)),
+				bytes.NewReader(v),
+			)
+		}()
 	}
-	defer f.Close()
-	if _, err := io.Copy(f, bytes.NewReader(indexRaw)); err != nil {
-		return InitError{err}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			return WrapError{err}
+		}
 	}
-
-	f, err = os.Create(filepath.Join(root, "blog", "index.html"))
-	if err != nil {
-		return InitError{err}
-	}
-	defer f.Close()
-	if _, err := io.Copy(f, bytes.NewReader(blogRaw)); err != nil {
-		return InitError{err}
-	}
-
-	// TODO(in progress): create css, markdown files.
 
 	success = true
 	return nil
+}
+
+func createFile(name string, data io.Reader) error {
+	if err := os.MkdirAll(filepath.Dir(name), perm.dir); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, perm.file)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, data)
+	return err
 }
