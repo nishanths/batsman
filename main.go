@@ -1,16 +1,22 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
+
+	"github.com/russross/blackfriday"
 )
 
 const versionString = "0.1.0"
@@ -196,6 +202,106 @@ var markdownExts = map[string]bool{
 	"markdown": true,
 }
 
+type FrontMatter struct {
+	Draft bool
+	Title string
+	Time  time.Time
+}
+
+type InvalidFrontMatterError struct {
+	Key, Val    string
+	CorrectVals []string
+}
+
+func (e *InvalidFrontMatterError) Error() string {
+	return fmt.Sprintf(
+		"styx: error: key %q has invalid value %q\nexpected values/formats are: {%s}",
+		e.Key, e.Val, strings.Join(e.CorrectVals, ", "),
+	)
+}
+
+var currentTimeOnce sync.Once
+var currTime time.Time
+
+func currentTime() time.Time {
+	currentTimeOnce.Do(func() {
+		currTime = time.Now().UTC()
+	})
+	return currTime
+}
+
+// TODO
+var knownTimeFormats = []string{}
+
+func (f *FrontMatter) fromMap(m map[string]string) error {
+	for k, v := range m {
+		switch k {
+		case "draft":
+			if v == "true" {
+				f.Draft = true
+			} else if v != "" && v != "false" {
+				return &InvalidFrontMatterError{k, v, []string{"true", "false"}}
+			}
+
+		case "title":
+			f.Title = v
+
+		case "time":
+			if v == "" {
+				f.Time = currentTime()
+			} else {
+				for i, format := range knownTimeFormats {
+					t, err := time.Parse(format, v)
+					if err == nil {
+						f.Time = t
+						break
+					}
+					if i == len(knownTimeFormats)-1 {
+						return &InvalidFrontMatterError{k, v, knownTimeFormats}
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+const YAMLFrontMatterSep = `---`
+
+func ParseFrontMatter(r io.Reader) (fm FrontMatter, exists bool, err error) {
+	scanner := bufio.NewScanner(r)
+	first := string(scanner.Text())
+	if first != YAMLFrontMatterSep {
+		return
+	}
+	exists = true
+
+	m := map[string]string{
+		"draft": "",
+		"title": "",
+		"time":  "",
+	}
+	sep := `:`
+
+	for scanner.Scan() {
+		line := string(scanner.Text())
+		if line == YAMLFrontMatterSep {
+			break
+		}
+
+		res := strings.Split(line, sep)
+		if len(res) != 2 {
+			err = fmt.Errorf("styx: error: front matter line %q should be in format \"key: val\"", line)
+			return
+		}
+		key, val := strings.TrimSpace(res[0]), strings.TrimSpace(res[1])
+		m[key] = val
+	}
+
+	err = fm.fromMap(m)
+	return
+}
+
 func (b *Build) Run() error {
 	src, build := filepath.Join(b.WorkDir, "src"), filepath.Join(b.WorkDir, "build")
 
@@ -204,9 +310,13 @@ func (b *Build) Run() error {
 			return err
 		}
 		if markdownExts[filepath.Ext(p)] {
-			// TODO:
-			// convert markdown to html using blackfriday.
-			// parse front matter.
+			b, err := ioutil.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			_ = blackfriday.MarkdownCommon(b)
+			// TODO
+			_, _, _ = ParseFrontMatter(bytes.NewReader(b))
 			// apply through plugins.
 			// paste into layout.tmpl.
 		} else if !info.IsDir() {
@@ -272,7 +382,7 @@ func (init *Initialize) Run() error {
 	if err := os.MkdirAll(root, perm.dir); err != nil {
 		return WrapError{err}
 	}
-	if err := os.MkdirAll(filepath.Join(root, "src"), perm.dir); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "src"), perm.dir); err != nil {
 		return WrapError{err}
 	}
 	wg := sync.WaitGroup{}
