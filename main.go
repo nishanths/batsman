@@ -7,53 +7,55 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
-	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 )
 
 const versionString = "0.1.0"
-const usageString = `usage: styx [-exclude=<f1,f2>] [-http=<addr>] [-watch] [-workdir=<dir>] <command>`
+const usageString = `usage: styx [flags]... <command>`
 const helpString = usageString + `
 
 flags:
-  -exclude  comma-separated list of filename patterns to exclude in build (default: "")
-  -http     http address to serve site (default: ":8080")
-  -watch    whether to rebuild on changes while serving (default: "false")
-  -workdir  path to site's root directory (default: ".")
+  -http        http address to serve site (default: "localhost:8080")
+  -watch       whether to regenerate static files on change while serving (default: false)
+  -title       title of new markdown file (default: "")
+  -draft       whether new markdown file is draft (default: false)
+  -workdir     path to site's root directory (default: "./")
 
 commands:
-  build    generate site into "build" directory
-  create   create markdown file at specified path
-  init     initalize new site at specified path
-  serve    serve "build" directory
-  summary  print site summary`
+  init         initialize new site at specified path
+  new          prints contents of new markdown file to stdout
+  build        generate static files into the "build/" directory
+  serve        serve the "build/" directory via http
+  summary      print site summary to stdout`
 
 var (
 	perm = struct {
 		file, dir os.FileMode
 	}{0644, 0755}
 
-	flags = struct {
-		Exclude []string
-		Http    string
-		Watch   bool
-		WorkDir string
-		Help    bool
-		Version bool
-	}{}
-
 	stdout = log.New(os.Stdout, "", 0)
 	stderr = log.New(os.Stderr, "", 0)
 )
 
 func main() {
-	var excl string
-	flag.StringVar(&excl, "exclude", "", "")
-	flag.StringVar(&flags.Http, "http", ":8080", "")
+	flags := struct {
+		HTTP    string
+		Watch   bool
+		Title   string
+		Draft   bool
+		WorkDir string
+
+		Help    bool
+		Version bool
+	}{}
+
+	flag.StringVar(&flags.HTTP, "http", "localhost:8080", "")
 	flag.BoolVar(&flags.Watch, "watch", false, "")
+	flag.StringVar(&flags.Title, "title", "", "")
+	flag.BoolVar(&flags.Draft, "draft", false, "")
 	flag.StringVar(&flags.WorkDir, "workdir", ".", "")
 	flag.BoolVar(&flags.Help, "help", false, "")
 	flag.BoolVar(&flags.Version, "version", false, "")
@@ -63,7 +65,6 @@ func main() {
 		os.Exit(2)
 	}
 	flag.Parse()
-	flags.Exclude = strings.Split(excl, ",")
 
 	if flags.Help {
 		stdout.Println(helpString)
@@ -75,14 +76,11 @@ func main() {
 	}
 
 	command := flag.Arg(0)
-	if command == "" {
-		stderr.Println("styx: require command")
-		stderr.Println(usageString)
-		stderr.Println(`run "styx -help" for more details`)
-		os.Exit(2)
-	}
-
 	switch command {
+	case "":
+		stderr.Println("styx: error: require command")
+		stderr.Println(helpString)
+		os.Exit(2)
 	case "help":
 		stdout.Println(helpString)
 		os.Exit(0)
@@ -91,47 +89,83 @@ func main() {
 		os.Exit(0)
 	}
 
-	if err := computeWorkDir(); err != nil {
+	workdir, err := computeAbsDir(flags.WorkDir)
+	if err != nil {
+		stderr.Println(err)
+		os.Exit(1)
+	}
+	if err := isDirErr(workdir); err != nil {
 		stderr.Println(err)
 		os.Exit(1)
 	}
 
 	switch command {
-	case "build":
-		do(build)
-	case "create":
 	case "init":
-		do(initialize)
+		do(&Initialize{
+			WorkDir: workdir,
+			Path:    flag.Arg(1),
+		})
+	case "new":
+		do(&New{
+			WorkDir: workdir,
+			Title:   flags.Title,
+			Draft:   flags.Draft,
+		})
+	case "build":
+		do(&Build{workdir})
 	case "serve":
-		do(serve)
+		do(&Serve{
+			WorkDir: workdir,
+			Watch:   flags.Watch,
+			HTTP:    flags.HTTP,
+		})
 	case "summary":
+		do(&Summary{workdir})
 	default:
 		stderr.Printf("styx: unknown command %q\n", command)
-		stderr.Println(`run "styx -help" for more details`)
+		stderr.Println(`run "styx -help" for usage`)
 		os.Exit(2)
 	}
 }
 
-func computeWorkDir() error {
-	flags.WorkDir = path.Clean(flags.WorkDir)
-
-	if !path.IsAbs(flags.WorkDir) {
-		wd, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("styx: failed to determine workdir: %s", err)
-		}
-		flags.WorkDir = path.Join(wd, flags.WorkDir)
-	}
-
-	info, err := os.Stat(flags.WorkDir)
+// isDirErr returns an error if p is not a directory,
+// or if any calls fail in the process.
+func isDirErr(p string) error {
+	info, err := os.Stat(p)
 	if err != nil {
-		return fmt.Errorf("styx: failed to determine workdir: %s", err)
+		return WrapError{err}
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("styx: workdir %q should be directory", flags.WorkDir)
+		return fmt.Errorf("styx: workdir %q should be directory", p)
+	}
+	return nil
+}
+
+// computeAbsDir returns he absolute path of p.
+// The error is non-nil if the absolute path could not
+// be computed or if p is not a directory.
+func computeAbsDir(p string) (string, error) {
+	p = filepath.Clean(p)
+	if filepath.IsAbs(p) {
+		return p, nil
 	}
 
-	return nil
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("styx: failed to determine workdir: %s", err)
+	}
+	return filepath.Join(wd, p), nil
+}
+
+// do calls cmd.Run and exits with exit code 1 if the
+// returned error is non-nil or with exit code 0 if
+// the error is nil.
+func do(cmd Cmd) {
+	if err := cmd.Run(); err != nil {
+		stderr.Println(err)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
 
 // isEmpty returns whether a directory is empty.
@@ -146,57 +180,101 @@ func isEmpty(name string) (bool, error) {
 	if err == io.EOF {
 		return true, nil
 	}
-	return false, err // Either not empty or error, suits both cases.
+	return false, err // Either nil or error, suits both cases.
 }
 
-type CmdFunc func(args ...string) error
+type Cmd interface {
+	Run() error
+}
 
-// do executes the supplied CmdFunc with flag.Args
-// and exits with a non-zero exit code
-// if the returned error is non-nil,
-// and with 0 if the error is nil.
-func do(fn CmdFunc) {
-	if err := fn(flag.Args()...); err != nil {
-		stderr.Println(err)
-		os.Exit(1)
+type Build struct {
+	WorkDir string // Absolute path of work dir.
+}
+
+var markdownExts = map[string]bool{
+	"md":       true,
+	"markdown": true,
+}
+
+func (b *Build) Run() error {
+	src, build := filepath.Join(b.WorkDir, "src"), filepath.Join(b.WorkDir, "build")
+
+	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if markdownExts[filepath.Ext(p)] {
+			// TODO:
+			// convert markdown to html using blackfriday.
+			// parse front matter.
+			// apply through plugins.
+			// paste into layout.tmpl.
+		} else if !info.IsDir() {
+			rem, err := filepath.Rel(src, p)
+			if err != nil {
+				return err
+			}
+			return copyFile(filepath.Join(build, rem), p)
+		}
+		return nil
+	})
+}
+
+func copyFile(dst, src string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
 	}
-	os.Exit(0)
+	defer in.Close()
+	return createFile(dst, in)
 }
 
-type WrapError struct {
-	Err error
+type New struct {
+	WorkDir string // Absolute path of work dir.
+	Title   string
+	Draft   bool
 }
 
-func (e WrapError) Error() string {
-	return fmt.Sprintf("styx: %s", e.Err.Error())
+func (n *New) Run() error {
+	panic("new")
 }
 
-func initialize(args ...string) error {
-	if len(args) < 2 || args[1] == "" {
-		return errors.New("styx: init requires path argument\nexample: styx init myblog")
+type Initialize struct {
+	WorkDir string // Absolute path of work dir.
+	Path    string // Path (absolute or relative) to initialize new site.
+}
+
+func (init *Initialize) Run() error {
+	if init.Path == "" {
+		return errors.New("styx: error: init requires path argument\nexample: styx init /path/to/new/site")
 	}
 
-	root := path.Join(flags.WorkDir, args[1])
+	root, err := computeAbsDir(init.Path)
+	if err != nil {
+		return err
+	}
 	success := false
+
+	ok, err := pathExists(root)
+	if err != nil {
+		return WrapError{err}
+	}
+	if ok {
+		return fmt.Errorf("styx: error: path %q already exists", root)
+	}
 
 	defer func() {
 		if !success {
-			os.RemoveAll(root) // Ignore error.
+			_ = os.RemoveAll(root) // ignore error.
 		}
 	}()
 
-	// Root path
-
-	if err := os.MkdirAll(path.Join(root, "src"), perm.dir); err != nil {
-		// TODO: Test this.
-		if os.IsExist(err) {
-			return fmt.Errorf("styx: path %q already exists")
-		}
+	if err := os.MkdirAll(root, perm.dir); err != nil {
 		return WrapError{err}
 	}
-
-	// Files
-
+	if err := os.MkdirAll(filepath.Join(root, "src"), perm.dir); err != nil {
+		return WrapError{err}
+	}
 	wg := sync.WaitGroup{}
 	errs := make(chan error, len(rawFiles))
 	for k, v := range rawFiles {
@@ -222,6 +300,39 @@ func initialize(args ...string) error {
 	return nil
 }
 
+type Serve struct {
+	WorkDir string // Absolute path of work dir.
+	HTTP    string
+	Watch   bool
+}
+
+func (s *Serve) Run() error {
+	stderr.Printf("serving HTTP on %s ...\n", s.HTTP)
+	return http.ListenAndServe(
+		s.HTTP,
+		http.FileServer(http.Dir(filepath.Join(s.WorkDir, "build"))),
+	)
+}
+
+type Summary struct {
+	WorkDir string
+}
+
+func (s *Summary) Run() error {
+	panic("summary")
+}
+
+func pathExists(p string) (bool, error) {
+	_, err := os.Stat(p)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return true, err
+}
+
 func createFile(name string, data io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(name), perm.dir); err != nil {
 		return err
@@ -231,6 +342,16 @@ func createFile(name string, data io.Reader) error {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, data)
-	return err
+	if _, err = io.Copy(f, data); err != nil {
+		return err
+	}
+	return f.Sync()
+}
+
+type WrapError struct {
+	Err error
+}
+
+func (e WrapError) Error() string {
+	return fmt.Sprintf("styx: error: %s", e.Err.Error())
 }
