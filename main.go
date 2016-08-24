@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"io/ioutil"
 	"log"
@@ -198,8 +199,8 @@ type Build struct {
 }
 
 var markdownExts = map[string]bool{
-	"md":       true,
-	"markdown": true,
+	".md":       true,
+	".markdown": true,
 }
 
 type FrontMatter struct {
@@ -230,39 +231,38 @@ func currentTime() time.Time {
 	return currTime
 }
 
-// TODO
-var knownTimeFormats = []string{}
+var knownTimeFormats = []string{
+	"2006-01-02 15:04:05 -07:00",
+	"2006-01-02 15:04:05",
+	"2006-01-02",
+}
 
 func (f *FrontMatter) fromMap(m map[string]string) error {
-	for k, v := range m {
-		switch k {
-		case "draft":
-			if v == "true" {
-				f.Draft = true
-			} else if v != "" && v != "false" {
-				return &InvalidFrontMatterError{k, v, []string{"true", "false"}}
+	v := m["draft"]
+	if v == "true" {
+		f.Draft = true
+	} else if v != "" && v != "false" {
+		return &InvalidFrontMatterError{"draft", v, []string{"true", "false"}}
+	}
+
+	f.Title = m["title"]
+
+	v = m["time"]
+	if v == "" {
+		f.Time = currentTime()
+	} else {
+		for i, format := range knownTimeFormats {
+			t, err := time.Parse(format, v)
+			if err == nil {
+				f.Time = t
+				break
 			}
-
-		case "title":
-			f.Title = v
-
-		case "time":
-			if v == "" {
-				f.Time = currentTime()
-			} else {
-				for i, format := range knownTimeFormats {
-					t, err := time.Parse(format, v)
-					if err == nil {
-						f.Time = t
-						break
-					}
-					if i == len(knownTimeFormats)-1 {
-						return &InvalidFrontMatterError{k, v, knownTimeFormats}
-					}
-				}
+			if i == len(knownTimeFormats)-1 {
+				return &InvalidFrontMatterError{"time", v, knownTimeFormats}
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -270,9 +270,13 @@ const YAMLFrontMatterSep = `---`
 
 func ParseFrontMatter(r io.Reader) (fm FrontMatter, exists bool, err error) {
 	scanner := bufio.NewScanner(r)
-	first := string(scanner.Text())
-	if first != YAMLFrontMatterSep {
+	ok := scanner.Scan()
+	if !ok {
 		return
+	}
+	first := scanner.Text()
+	if first != YAMLFrontMatterSep {
+		return // no front matter.
 	}
 	exists = true
 
@@ -284,14 +288,14 @@ func ParseFrontMatter(r io.Reader) (fm FrontMatter, exists bool, err error) {
 	sep := `:`
 
 	for scanner.Scan() {
-		line := string(scanner.Text())
+		line := scanner.Text()
 		if line == YAMLFrontMatterSep {
-			break
+			break // end of front matter.
 		}
 
-		res := strings.Split(line, sep)
+		res := strings.SplitN(line, sep, 2)
 		if len(res) != 2 {
-			err = fmt.Errorf("styx: error: front matter line %q should be in format \"key: val\"", line)
+			err = fmt.Errorf("styx: error: front matter %q should be in format \"key: val\"", line)
 			return
 		}
 		key, val := strings.TrimSpace(res[0]), strings.TrimSpace(res[1])
@@ -302,30 +306,145 @@ func ParseFrontMatter(r io.Reader) (fm FrontMatter, exists bool, err error) {
 	return
 }
 
-func (b *Build) Run() error {
-	src, build := filepath.Join(b.WorkDir, "src"), filepath.Join(b.WorkDir, "build")
+type TemplateArgs struct {
+	Current *Page   // Current file.
+	All     []*Page // All files in the same directory.
+}
 
-	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+type Page struct {
+	Content string    // HTML content generated from markdown.
+	Title   string    // Title from front matter.
+	Time    time.Time // Timestamp from front matter.
+}
+
+func makeLayoutTemplates(root string) (map[string]*template.Template, error) {
+	wg := sync.WaitGroup{}
+	type result struct {
+		Dir      string
+		Template *template.Template
+		Err      error
+	}
+	results := make(chan result)
+
+	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			return nil
 		}
-		if markdownExts[filepath.Ext(p)] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tmpl, err := template.ParseFiles(filepath.Join(p, "_layout.tmpl"))
+			results <- result{p, tmpl, err}
+		}()
+		return nil
+	})
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	ret := make(map[string]*template.Template)
+	var err error
+	for r := range results {
+		if r.Err != nil {
+			err = r.Err
+		}
+		ret[r.Dir] = r.Template
+	}
+	return ret, err
+}
+
+func makeAllPages(root string) (map[string][]*Page, error) {
+	type result struct {
+		Dir  string
+		Page *Page
+		Err  error
+	}
+	wg := sync.WaitGroup{}
+	results := make(chan result)
+
+	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
+		}
+		if !markdownExts[filepath.Ext(p)] {
+			return nil
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
 			b, err := ioutil.ReadFile(p)
 			if err != nil {
-				return err
+				results <- result{Err: err}
+				return
 			}
-			_ = blackfriday.MarkdownCommon(b)
-			// TODO
-			_, _, _ = ParseFrontMatter(bytes.NewReader(b))
-			// apply through plugins.
-			// paste into layout.tmpl.
-		} else if !info.IsDir() {
+
+			page := &Page{}
+
+			innerWg := sync.WaitGroup{}
+			innerWg.Add(1)
+			go func() {
+				defer innerWg.Done()
+				page.Content = string(blackfriday.MarkdownCommon(b))
+				// TODO(nishanths): apply through plugins.
+			}()
+
+			fm, ok, err := ParseFrontMatter(bytes.NewReader(b))
+			if err != nil {
+				results <- result{Err: err}
+				return
+			}
+			if ok {
+				page.Title = fm.Title
+				page.Time = fm.Time
+			}
+
+			innerWg.Wait()
+			results <- result{filepath.Dir(p), page, nil}
+		}()
+
+		return nil
+	})
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	all := make(map[string][]*Page)
+	var err error
+	for r := range results {
+		if r.Err != nil {
+			err = r.Err
+		}
+		all[r.Dir] = append(all[r.Dir], r.Page)
+	}
+	return all, err
+}
+
+func (b *Build) Run() error {
+	src := filepath.Join(b.WorkDir, "src")
+	build := filepath.Join(b.WorkDir, "build")
+
+	// TODO(nishanths): pickup from here.
+	// run in goroutines.
+	makeLayoutTemplates(src)
+	makeAllPages(src)
+
+	// TODO(nishanths): this may now be outdated.
+	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
+		// Copy over non-markdown files.
+		if !info.IsDir() {
 			rem, err := filepath.Rel(src, p)
 			if err != nil {
 				return err
 			}
 			return copyFile(filepath.Join(build, rem), p)
 		}
+
 		return nil
 	})
 }

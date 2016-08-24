@@ -23,7 +23,7 @@ var rawFiles = map[string][]byte{
 
 	"src/blog/usage.md": []byte(`---
 title: Styx Usage
-date: 31 Jul 16 15:04 -0900
+date: 2016-07-31 15:04:00 -0900
 draft: false
 ---
 
