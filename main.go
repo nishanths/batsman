@@ -25,18 +25,18 @@ const usageString = `usage: styx [flags]... <command>`
 const helpString = usageString + `
 
 flags:
-  -http        http address to serve site (default: "localhost:8080")
-  -watch       whether to regenerate static files on change while serving (default: false)
-  -title       title of new markdown file (default: "")
-  -draft       whether new markdown file is draft (default: false)
-  -workdir     path to site's root directory (default: "./")
+  -http     http address to serve site (default: "localhost:8080")
+  -watch    whether to regenerate static files on change while serving (default: false)
+  -title    title of new markdown file (default: "")
+  -draft    whether new markdown file is a draft (default: false)
+  -workdir  path to site's root directory (default: "./")
 
 commands:
-  init         initialize new site at specified path
-  new          prints contents of new markdown file to stdout
-  build        generate static files into the "build/" directory
-  serve        serve the "build/" directory via http
-  summary      print site summary to stdout`
+  init     initialize new site at specified path
+  new      prints contents of new markdown file to stdout
+  build    generate static files into the "build/" directory
+  serve    serve the "build/" directory via http
+  summary  print site summary to stdout`
 
 var (
 	perm = struct {
@@ -312,50 +312,13 @@ type TemplateArgs struct {
 }
 
 type Page struct {
-	Content string    // HTML content generated from markdown.
-	Title   string    // Title from front matter.
-	Time    time.Time // Timestamp from front matter.
+	Content template.HTML // HTML content generated from markdown.
+	Title   string        // Title from front matter.
+	Time    time.Time     // Timestamp from front matter.
 }
 
-func makeLayoutTemplates(root string) (map[string]*template.Template, error) {
-	wg := sync.WaitGroup{}
-	type result struct {
-		Dir      string
-		Template *template.Template
-		Err      error
-	}
-	results := make(chan result)
-
-	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-		if !info.IsDir() {
-			return nil
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			tmpl, err := template.ParseFiles(filepath.Join(p, "_layout.tmpl"))
-			results <- result{p, tmpl, err}
-		}()
-		return nil
-	})
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	ret := make(map[string]*template.Template)
-	var err error
-	for r := range results {
-		if r.Err != nil {
-			err = r.Err
-		}
-		ret[r.Dir] = r.Template
-	}
-	return ret, err
-}
-
-func makeAllPages(root string) (map[string][]*Page, error) {
+func makeAllPages(root string) (map[string]*Page, map[string][]*Page, error) {
+	ret := make(map[string]*Page)
 	type result struct {
 		Dir  string
 		Page *Page
@@ -381,6 +344,7 @@ func makeAllPages(root string) (map[string][]*Page, error) {
 				results <- result{Err: err}
 				return
 			}
+			// TODO: strip front matter if exists.
 
 			page := &Page{}
 
@@ -388,7 +352,7 @@ func makeAllPages(root string) (map[string][]*Page, error) {
 			innerWg.Add(1)
 			go func() {
 				defer innerWg.Done()
-				page.Content = string(blackfriday.MarkdownCommon(b))
+				page.Content = template.HTML(blackfriday.MarkdownCommon(b))
 				// TODO(nishanths): apply through plugins.
 			}()
 
@@ -403,7 +367,8 @@ func makeAllPages(root string) (map[string][]*Page, error) {
 			}
 
 			innerWg.Wait()
-			results <- result{filepath.Dir(p), page, nil}
+			ret[p] = page
+			results <- result{p, page, nil}
 		}()
 
 		return nil
@@ -422,29 +387,52 @@ func makeAllPages(root string) (map[string][]*Page, error) {
 		}
 		all[r.Dir] = append(all[r.Dir], r.Page)
 	}
-	return all, err
+	return ret, all, err
 }
 
 func (b *Build) Run() error {
 	src := filepath.Join(b.WorkDir, "src")
 	build := filepath.Join(b.WorkDir, "build")
 
-	// TODO(nishanths): pickup from here.
-	// run in goroutines.
-	makeLayoutTemplates(src)
-	makeAllPages(src)
+	filePage, dirPages, err := makeAllPages(src)
+	if err != nil {
+		return WrapError{err}
+	}
 
-	// TODO(nishanths): this may now be outdated.
+	dirLayout := make(map[string]*template.Template) // map from directory name to layout template file.
+
 	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
-		// Copy over non-markdown files.
-		if !info.IsDir() {
+		if markdownExts[filepath.Ext(p)] {
+			tmpl, ok := dirLayout[filepath.Dir(p)]
+			if !ok {
+				var err error
+				tmpl, err = template.ParseFiles(filepath.Join(filepath.Dir(p), "_layout.tmpl"))
+				if err != nil {
+					return WrapError{err}
+				}
+				dirLayout[filepath.Dir(p)] = tmpl
+			}
+			rem, err := filepath.Rel(src, p)
+			if err != nil {
+				return err
+			}
+			f, err := createFile(filepath.Join(build, rem))
+			if err != nil {
+				return WrapError{err}
+			}
+			if err := tmpl.Execute(f, TemplateArgs{
+				Current: filePage[p],
+				All:     dirPages[filepath.Dir(p)],
+			}); err != nil {
+				return WrapError{err}
+			}
+		} else if !info.IsDir() {
 			rem, err := filepath.Rel(src, p)
 			if err != nil {
 				return err
 			}
 			return copyFile(filepath.Join(build, rem), p)
 		}
-
 		return nil
 	})
 }
@@ -455,7 +443,7 @@ func copyFile(dst, src string) error {
 		return err
 	}
 	defer in.Close()
-	return createFile(dst, in)
+	return createFileWithData(dst, in)
 }
 
 type New struct {
@@ -511,7 +499,7 @@ func (init *Initialize) Run() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- createFile(
+			errs <- createFileWithData(
 				filepath.Join(root, filepath.FromSlash(k)),
 				bytes.NewReader(v),
 			)
@@ -562,7 +550,14 @@ func pathExists(p string) (bool, error) {
 	return true, err
 }
 
-func createFile(name string, data io.Reader) error {
+func createFile(name string) (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(name), perm.dir); err != nil {
+		return nil, err
+	}
+	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, perm.file)
+}
+
+func createFileWithData(name string, data io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(name), perm.dir); err != nil {
 		return err
 	}

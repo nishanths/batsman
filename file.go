@@ -21,6 +21,12 @@ var rawFiles = map[string][]byte{
   </ul>
 </div>`),
 
+	// TODO
+	"src/blog/_layout.tmpl": []byte(`<html>{{.Current.Content}}</html>`),
+	"src/blog/usage2.md": []byte(`
+# styx
+	`),
+
 	"src/blog/usage.md": []byte(`---
 title: Styx Usage
 date: 2016-07-31 15:04:00 -0900
