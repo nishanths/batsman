@@ -84,6 +84,9 @@ func makeAllPages(root string) (map[string]*Page, map[string][]*Page, error) {
 				page.Title = fm.Title
 				page.Time = fm.Time
 			}
+			if fm.Draft {
+				return
+			}
 
 			innerWg.Wait()
 			ret[p] = page
@@ -112,6 +115,9 @@ func makeAllPages(root string) (map[string]*Page, map[string][]*Page, error) {
 	return ret, all, err
 }
 
+// changeExt switches the file extension in s to newExt.
+// newExt is expected to start with ".". For example, ".txt".
+// If s does not have a file extension, newExt is simply appended to s.
 func changeExt(s, newExt string) string {
 	return strings.TrimSuffix(s, filepath.Ext(s)) + newExt
 }

@@ -41,6 +41,9 @@ var (
 	stderr = log.New(os.Stderr, "", 0)
 )
 
+// currentTime is set once in main and should
+// be used instead of time.Now() so that the same
+// timestamp is used everywhere.
 var currentTime time.Time
 
 func main() {
