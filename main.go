@@ -47,6 +47,8 @@ var (
 	stderr = log.New(os.Stderr, "", 0)
 )
 
+var currentTime time.Time
+
 func main() {
 	flags := struct {
 		HTTP    string
@@ -72,6 +74,8 @@ func main() {
 		os.Exit(2)
 	}
 	flag.Parse()
+
+	currentTime = time.Now().UTC()
 
 	if flags.Help {
 		stdout.Println(helpString)
@@ -191,6 +195,8 @@ func isEmpty(name string) (bool, error) {
 }
 
 type Cmd interface {
+	// Run executes the command. The error strings returned
+	// should be prefixed with "styx: ".
 	Run() error
 }
 
@@ -203,32 +209,29 @@ var markdownExts = map[string]bool{
 	".markdown": true,
 }
 
+// FrontMatter represents front matter at the top
+// of markdown files.
 type FrontMatter struct {
 	Draft bool
 	Title string
 	Time  time.Time
 }
 
+// InvalidFrontMatterError represents an error
+// in a line of front matter.
 type InvalidFrontMatterError struct {
 	Key, Val    string
 	CorrectVals []string
 }
 
 func (e *InvalidFrontMatterError) Error() string {
-	return fmt.Sprintf(
-		"styx: error: key %q has invalid value %q\nexpected values/formats are: {%s}",
-		e.Key, e.Val, strings.Join(e.CorrectVals, ", "),
-	)
-}
-
-var currentTimeOnce sync.Once
-var currTime time.Time
-
-func currentTime() time.Time {
-	currentTimeOnce.Do(func() {
-		currTime = time.Now().UTC()
-	})
-	return currTime
+	s := fmt.Sprintf("styx: error: key %q has invalid value %q", e.Key, e.Val)
+	if len(e.CorrectVals) > 0 {
+		s += fmt.Sprintf(
+			"\nexpected values/formats are: {%s}", strings.Join(e.CorrectVals, ", "),
+		)
+	}
+	return s
 }
 
 var knownTimeFormats = []string{
@@ -249,7 +252,7 @@ func (f *FrontMatter) fromMap(m map[string]string) error {
 
 	v = m["time"]
 	if v == "" {
-		f.Time = currentTime()
+		f.Time = currentTime
 	} else {
 		for i, format := range knownTimeFormats {
 			t, err := time.Parse(format, v)
@@ -266,7 +269,7 @@ func (f *FrontMatter) fromMap(m map[string]string) error {
 	return nil
 }
 
-const YAMLFrontMatterSep = `---`
+const FrontMatterSep = `---`
 
 func ParseFrontMatter(r io.Reader) (fm FrontMatter, exists bool, err error) {
 	scanner := bufio.NewScanner(r)
@@ -275,7 +278,7 @@ func ParseFrontMatter(r io.Reader) (fm FrontMatter, exists bool, err error) {
 		return
 	}
 	first := scanner.Text()
-	if first != YAMLFrontMatterSep {
+	if first != FrontMatterSep {
 		return // no front matter.
 	}
 	exists = true
@@ -289,7 +292,7 @@ func ParseFrontMatter(r io.Reader) (fm FrontMatter, exists bool, err error) {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if line == YAMLFrontMatterSep {
+		if line == FrontMatterSep {
 			break // end of front matter.
 		}
 
@@ -327,7 +330,10 @@ func makeAllPages(root string) (map[string]*Page, map[string][]*Page, error) {
 	wg := sync.WaitGroup{}
 	results := make(chan result)
 
-	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if info.IsDir() {
 			return nil
 		}
@@ -374,13 +380,16 @@ func makeAllPages(root string) (map[string]*Page, map[string][]*Page, error) {
 		return nil
 	})
 
+	if err != nil {
+		return nil, nil, err
+	}
+
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
 
 	all := make(map[string][]*Page)
-	var err error
 	for r := range results {
 		if r.Err != nil {
 			err = r.Err
@@ -388,6 +397,10 @@ func makeAllPages(root string) (map[string]*Page, map[string][]*Page, error) {
 		all[r.Dir] = append(all[r.Dir], r.Page)
 	}
 	return ret, all, err
+}
+
+func changeExt(s, newExt string) string {
+	return strings.TrimSuffix(s, filepath.Ext(s)) + newExt
 }
 
 func (b *Build) Run() error {
@@ -399,42 +412,120 @@ func (b *Build) Run() error {
 		return WrapError{err}
 	}
 
-	dirLayout := make(map[string]*template.Template) // map from directory name to layout template file.
+	// dirLayout is a map from directory name to the layout template for the
+	// directory.
+	dirLayout := struct {
+		sync.Mutex
+		m map[string]*template.Template
+	}{m: make(map[string]*template.Template)}
 
-	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
-		if markdownExts[filepath.Ext(p)] {
-			tmpl, ok := dirLayout[filepath.Dir(p)]
-			if !ok {
-				var err error
-				tmpl, err = template.ParseFiles(filepath.Join(filepath.Dir(p), "_layout.tmpl"))
-				if err != nil {
-					return WrapError{err}
-				}
-				dirLayout[filepath.Dir(p)] = tmpl
-			}
-			rem, err := filepath.Rel(src, p)
-			if err != nil {
-				return err
-			}
-			f, err := createFile(filepath.Join(build, rem))
-			if err != nil {
-				return WrapError{err}
-			}
-			if err := tmpl.Execute(f, TemplateArgs{
-				Current: filePage[p],
-				All:     dirPages[filepath.Dir(p)],
-			}); err != nil {
-				return WrapError{err}
-			}
-		} else if !info.IsDir() {
-			rem, err := filepath.Rel(src, p)
-			if err != nil {
-				return err
-			}
-			return copyFile(filepath.Join(build, rem), p)
+	wg := sync.WaitGroup{}
+	errs := make(chan error)
+	err = filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
 		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			switch {
+			case info.IsDir():
+				return
+
+			case markdownExts[filepath.Ext(p)]:
+				// Get layout template.
+				tmpl, ok := dirLayout.m[filepath.Dir(p)]
+				if !ok {
+					var err error
+					tmpl, err = template.ParseFiles(filepath.Join(filepath.Dir(p), "layout.tmpl"))
+					if err != nil {
+						errs <- err
+						return
+					}
+					dirLayout.Lock()
+					dirLayout.m[filepath.Dir(p)] = tmpl
+					dirLayout.Unlock()
+				}
+				// Create file with same name and .html extension in build.
+				rem, err := filepath.Rel(src, p)
+				if err != nil {
+					errs <- err
+					return
+				}
+				f, err := createFile(changeExt(filepath.Join(build, rem), ".html"))
+				if err != nil {
+					errs <- err
+					return
+				}
+				defer f.Close()
+				// Execute template into .html file.
+				if err := tmpl.Execute(f, TemplateArgs{
+					Current: filePage[p],
+					All:     dirPages[filepath.Dir(p)],
+				}); err != nil {
+					errs <- err
+					return
+				}
+				f.Sync()
+
+			case filepath.Ext(p) == ".html":
+				// Create corresponding .html file in build and
+				// execute as template.
+				tmpl, err := template.ParseFiles(p)
+				if err != nil {
+					errs <- err
+					return
+				}
+				rem, err := filepath.Rel(src, p)
+				if err != nil {
+					errs <- err
+					return
+				}
+				f, err := createFile(filepath.Join(build, rem))
+				if err != nil {
+					errs <- err
+					return
+				}
+				defer f.Close()
+				if err := tmpl.Execute(f, TemplateArgs{
+					All: dirPages[filepath.Dir(p)],
+				}); err != nil {
+					errs <- err
+					return
+				}
+				f.Sync()
+
+			default:
+				// All other files - simply copy.
+				rem, err := filepath.Rel(src, p)
+				if err != nil {
+					errs <- err
+					return
+				}
+				errs <- copyFile(filepath.Join(build, rem), p)
+			}
+		}()
 		return nil
 	})
+
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		wg.Wait()
+		close(errs)
+	}()
+
+	for err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func copyFile(dst, src string) error {
@@ -524,7 +615,7 @@ type Serve struct {
 }
 
 func (s *Serve) Run() error {
-	stderr.Printf("serving HTTP on %s ...\n", s.HTTP)
+	stdout.Printf("serving http on %s ...\n", s.HTTP)
 	return http.ListenAndServe(
 		s.HTTP,
 		http.FileServer(http.Dir(filepath.Join(s.WorkDir, "build"))),

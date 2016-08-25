@@ -13,7 +13,7 @@ var rawFiles = map[string][]byte{
 <link rel="stylesheet" href="/css/style.css"/>
 <div class="container">
   <ul>
-  {{ range .Posts }}
+  {{ range .All }}
     <li>
       <h2>{{ .Title }}</h2>
       <div>{{ .Date }}</div>
@@ -22,7 +22,7 @@ var rawFiles = map[string][]byte{
 </div>`),
 
 	// TODO
-	"src/blog/_layout.tmpl": []byte(`<html>{{.Current.Content}}</html>`),
+	"src/blog/layout.tmpl": []byte(`<html>{{.Current.Content}}</html>`),
 	"src/blog/usage2.md": []byte(`
 # styx
 	`),
