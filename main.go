@@ -27,9 +27,9 @@ flags:
 
 commands:
   init     initialize new site at specified path
-  new      prints contents of new markdown file to stdout
-  build    generate static files into the "build/" directory
-  serve    serve the "build/" directory via http
+  new      print new markdown file to stdout
+  build    generate static files into "build/" directory
+  serve    serve "build/" directory via http
   summary  print site summary to stdout`
 
 var (
@@ -83,7 +83,6 @@ func main() {
 	command := flag.Arg(0)
 	switch command {
 	case "":
-		stderr.Println("styx: error: require command")
 		stderr.Println(helpString)
 		os.Exit(2)
 	case "help":
@@ -229,35 +228,38 @@ type Initialize struct {
 
 func (init *Initialize) Run() error {
 	if init.Path == "" {
-		return errors.New("styx: error: init requires path argument\nexample: styx init /path/to/new/site")
+		return errors.New("styx: init requires path argument\nexample: styx init /path/to/new/site")
 	}
 
 	root, err := computeAbsDir(init.Path)
 	if err != nil {
 		return err
 	}
-	success := false
 
-	ok, err := pathExists(root)
+	empty, err := isEmpty(root)
 	if err != nil {
 		return WrapError{err}
 	}
-	if ok {
-		return fmt.Errorf("styx: error: path %q already exists", root)
+	if !empty {
+		return fmt.Errorf("styx: path %q not empty", root)
 	}
 
+	if err := os.MkdirAll(root, perm.dir); err != nil && !os.IsExist(err) {
+		return WrapError{err}
+	}
+
+	success := false
 	defer func() {
+		// Cleanup.
 		if !success {
-			_ = os.RemoveAll(root) // ignore error.
+			_ = os.RemoveAll(root) // Ignore error.
 		}
 	}()
 
-	if err := os.MkdirAll(root, perm.dir); err != nil {
-		return WrapError{err}
-	}
 	if err := os.Mkdir(filepath.Join(root, "src"), perm.dir); err != nil {
 		return WrapError{err}
 	}
+
 	wg := sync.WaitGroup{}
 	errs := make(chan error, len(rawFiles))
 	for k, v := range rawFiles {
