@@ -207,17 +207,11 @@ type New struct {
 }
 
 func (n *New) Run() error {
-	buf := bytes.Buffer{}
-	buf.WriteString("---\n")
-	if n.Title != "" {
-		buf.WriteString(fmt.Sprintf("title: %s\n", n.Title))
-	}
-	if n.Draft {
-		buf.WriteString(fmt.Sprintf("draft: %t\n", n.Draft))
-	}
-	buf.WriteString(fmt.Sprintf("time: %s\n", currentTime.Format(defaultTimeFormat)))
-	buf.WriteString("---\n")
-	stdout.Print(buf.String())
+	stdout.Print(FrontMatter{
+		Title: n.Title,
+		Draft: n.Draft,
+		Time:  currentTime,
+	})
 	return nil
 }
 
@@ -236,12 +230,18 @@ func (init *Initialize) Run() error {
 		return err
 	}
 
-	empty, err := isEmpty(root)
+	exists, err := pathExists(root)
 	if err != nil {
-		return WrapError{err}
+		return err
 	}
-	if !empty {
-		return fmt.Errorf("styx: path %q not empty", root)
+	if exists {
+		empty, err := isEmpty(root)
+		if err != nil {
+			return WrapError{err}
+		}
+		if !empty {
+			return fmt.Errorf("styx: path %q not empty", root)
+		}
 	}
 
 	if err := os.MkdirAll(root, perm.dir); err != nil && !os.IsExist(err) {

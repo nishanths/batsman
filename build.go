@@ -63,7 +63,7 @@ func makeAllPages(root string) (map[string]*Page, map[string][]*Page, error) {
 				results <- result{Err: err}
 				return
 			}
-			// TODO: strip front matter if exists.
+			b = stripFrontMatter(b)
 
 			page := &Page{}
 
