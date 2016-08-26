@@ -32,6 +32,8 @@ commands:
   serve    serve "build/" directory via http
   summary  print site summary to stdout`
 
+// TODO: deploy? Makefile?
+
 var (
 	perm = struct {
 		file, dir os.FileMode

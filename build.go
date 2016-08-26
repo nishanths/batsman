@@ -33,7 +33,7 @@ type Page struct {
 	Time    time.Time     // Timestamp from front matter.
 }
 
-func makeAllPages(root string) (map[string]*Page, map[string][]*Page, error) {
+func makePages(root string) (map[string]*Page, map[string][]*Page, error) {
 	ret := make(map[string]*Page)
 	type result struct {
 		Dir  string
@@ -126,7 +126,7 @@ func (b *Build) Run() error {
 	src := filepath.Join(b.WorkDir, "src")
 	build := filepath.Join(b.WorkDir, "build")
 
-	filePage, dirPages, err := makeAllPages(src)
+	filePage, dirPages, err := makePages(src)
 	if err != nil {
 		return WrapError{err}
 	}
@@ -173,6 +173,7 @@ func (b *Build) Run() error {
 					errs <- err
 					return
 				}
+				buf := bytes.Buffer{}
 				f, err := createFile(changeExt(filepath.Join(build, rem), ".html"))
 				if err != nil {
 					errs <- err
@@ -180,10 +181,20 @@ func (b *Build) Run() error {
 				}
 				defer f.Close()
 				// Execute template into .html file.
-				if err := tmpl.Execute(f, TemplateArgs{
+				if err := tmpl.Execute(&buf, TemplateArgs{
 					Current: filePage[p],
 					All:     dirPages[filepath.Dir(p)],
 				}); err != nil {
+					errs <- err
+					return
+				}
+				t := template.New("content").Funcs(plugins)
+				_, err = t.Parse(buf.String())
+				if err != nil {
+					errs <- err
+					return
+				}
+				if err := t.Execute(f, nil); err != nil {
 					errs <- err
 					return
 				}

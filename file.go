@@ -32,9 +32,8 @@ title: Styx Usage
 date: 2016-07-31 15:04:00 -0900
 draft: false
 +++
-
 # styx
-{{ .Gist nishanths/foo }}`),
+{{ Gist }}`),
 
 	"src/css/style.css": []byte(`
 /* http://meyerweb.com/eric/tools/css/reset/ 
