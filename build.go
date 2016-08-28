@@ -38,9 +38,9 @@ var MarkdownExts = map[string]bool{
 // TemplateArgs contains the data available to each template.
 // Current is only available in "layout.tmpl" files.
 type TemplateArgs struct {
-	Current *Page              // Current file.
-	Dir     []*Page            // Pages in the same directory.
-	All     map[string][]*Page // All pages in the tree.
+	Current Page              // Current markdown file.
+	Dir     []Page            // Markdown files in the same directory.
+	All     map[string][]Page // All markdown pages in the tree.
 }
 
 // Page represents a markdown file.
@@ -52,20 +52,20 @@ type Page struct {
 }
 
 // ByTime sorts pages in reverse chronological order.
-type ByTime []*Page
+type ByTime []Page
 
 func (a ByTime) Len() int           { return len(a) }
 func (a ByTime) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByTime) Less(i, j int) bool { return !a[i].Time.Before(a[j].Time) }
 
-func (b *Build) makePages(root string) (pages map[string]*Page, all map[string][]*Page, err error) {
+func (b *Build) makePages(root string) (pages map[string]Page, all map[string][]Page, err error) {
 	mx := sync.Mutex{}
-	pages = make(map[string]*Page)
-	all = make(map[string][]*Page)
+	pages = make(map[string]Page)
+	all = make(map[string][]Page)
 
 	type result struct {
 		Dir  string
-		Page *Page
+		Page Page
 		Err  error
 	}
 	wg := sync.WaitGroup{}
@@ -92,7 +92,7 @@ func (b *Build) makePages(root string) (pages map[string]*Page, all map[string][
 				return
 			}
 
-			page := &Page{}
+			page := Page{}
 
 			innerWg := sync.WaitGroup{}
 			innerWg.Add(1)
