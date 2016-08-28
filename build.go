@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,7 +16,10 @@ import (
 
 	"github.com/russross/blackfriday"
 	"github.com/tdewolff/minify"
+	"github.com/tdewolff/minify/css"
 	"github.com/tdewolff/minify/html"
+	"github.com/tdewolff/minify/js"
+	"github.com/tdewolff/minify/svg"
 )
 
 type Build struct {
@@ -134,7 +138,7 @@ func (b *Build) makePages(root string) (pages map[string]*Page, all map[string][
 				results <- result{Err: err}
 				return
 			}
-			page.Path = "/" + filepath.ToSlash(stripExt(rel))
+			page.Path = "/" + path.Join(filepath.ToSlash(stripExt(rel)))
 			results <- result{filepath.Dir(rel), page, nil}
 		}()
 
@@ -176,6 +180,26 @@ func changeExt(s, newExt string) string {
 	return stripExt(s) + newExt
 }
 
+type minifyFunc func(m *minify.M, w io.Writer, r io.Reader, params map[string]string) error
+
+// minifyFuncs is a map from file extensions to mime type and minify
+// function.
+//
+// Should be kept in sync with the functions registered to the minifier in
+// Run.
+//
+// TODO(nishanths): make minifier.minifyFunc public in minifier pakcage.
+// Then we can simply range over this map and register the functions
+// instead.
+var minifyFuncs = map[string]struct {
+	mime string
+	fn   minifyFunc
+}{
+	".css": {"text/css", css.Minify},
+	".js":  {"text/javascript", js.Minify},
+	".svg": {"image/svg+xml", svg.Minify},
+}
+
 func (b *Build) Run() error {
 	src := "src"
 	build := "build"
@@ -194,6 +218,9 @@ func (b *Build) Run() error {
 
 	mf := minify.New()
 	mf.Add("text/html", &html.Minifier{})
+	mf.AddFunc("text/css", css.Minify)
+	mf.AddFunc("text/javascript", js.Minify)
+	mf.AddFunc("image/svg+xml", svg.Minify)
 
 	wg := sync.WaitGroup{}
 	errs := make(chan error)
@@ -205,10 +232,35 @@ func (b *Build) Run() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			_, minifiable := minifyFuncs[filepath.Ext(p)]
 
 			switch {
 			case info.IsDir() || info.Name() == "layout.tmpl":
 				return
+
+			case minifiable:
+				in, err := os.Open(p)
+				if err != nil {
+					errs <- err
+					return
+				}
+				defer in.Close()
+				rem, err := filepath.Rel(src, p)
+				if err != nil {
+					errs <- err
+					return
+				}
+				out, err := createFile(filepath.Join(build, rem))
+				if err != nil {
+					errs <- err
+					return
+				}
+				defer out.Close()
+				if err := minifyFuncs[filepath.Ext(p)].fn(mf, out, in, nil); err != nil {
+					errs <- err
+					return
+				}
+				out.Sync()
 
 			case MarkdownExts[filepath.Ext(p)]:
 				// Get layout template.
@@ -278,12 +330,19 @@ func (b *Build) Run() error {
 					errs <- err
 					return
 				}
-				if err := tmpl.Execute(f, TemplateArgs{
+
+				w := mf.Writer("text/html", f)
+				defer w.Close()
+				if err := tmpl.Execute(w, TemplateArgs{
 					Dir: dirPages[rel],
 					All: dirPages,
 				}); err != nil {
-					errs <- err
-					return
+					// TODO(nishanths): Fix this check. Appears to be issue
+					// with minify package.
+					if err != io.ErrClosedPipe {
+						errs <- err
+						return
+					}
 				}
 				f.Sync()
 
