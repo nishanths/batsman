@@ -21,10 +21,10 @@ var funcs = texttemplate.FuncMap{
 		default:
 			return "", errors.New(`Gist: invalid arguments
 valid examples:
-{{ Gist "user/28949e1d5ee2273f9fd3" }}
-{{ Gist "user/28949e1d5ee2273f9fd3" "foo.rb" }}
-{{ Gist "28949e1d5ee2273f9fd3" }}
-{{ Gist "28949e1d5ee2273f9fd3" "foo.rb" }}`)
+{{ Gist "user/123abcdef" }}
+{{ Gist "user/123abcdef" "foo.rb" }}
+{{ Gist "123abcedef" }}
+{{ Gist "123abcedef" "bar.rb" }}`)
 		}
 	},
 }
