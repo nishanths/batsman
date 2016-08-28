@@ -189,7 +189,7 @@ type minifyFunc func(m *minify.M, w io.Writer, r io.Reader, params map[string]st
 // Should be kept in sync with the functions registered to the minifier in
 // Run.
 //
-// TODO(nishanths): make minifier.minifyFunc public in minifier pakcage.
+// TODO(nishanths): make minify.minifierFunc public in minifier pakcage.
 // Then we can simply range over this map and register the functions
 // instead.
 var minifyFuncs = map[string]struct {
