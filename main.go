@@ -111,27 +111,6 @@ func main() {
 	}
 }
 
-func isDir(p string) (bool, error) {
-	info, err := os.Stat(p)
-	if err != nil {
-		return false, err
-	}
-	return info.IsDir(), nil
-}
-
-func computeAbsDir(p string) (string, error) {
-	p = filepath.Clean(p)
-	if filepath.IsAbs(p) {
-		return p, nil
-	}
-
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(wd, p), nil
-}
-
 // do runs Cmd and exits with exit code 1 if the
 // returned error is non-nil or with exit code 0 if
 // the error is nil.
@@ -188,7 +167,7 @@ func (n *New) Run() error {
 }
 
 type Initialize struct {
-	Path string // Path (absolute or relative) to initialize new site.
+	Path string // Path initialize new site at.
 }
 
 func (init *Initialize) Run() error {
