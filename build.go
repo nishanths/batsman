@@ -190,6 +190,7 @@ type minifyFunc func(m *minify.M, w io.Writer, r io.Reader, params map[string]st
 // Run.
 //
 // TODO(nishanths): make minify.minifierFunc public in minifier pakcage.
+// https://github.com/tdewolff/minify/pull/92.
 // Then we can simply range over this map and register the functions
 // instead.
 var minifyFuncs = map[string]struct {
