@@ -138,7 +138,7 @@ func ParseFrontMatter(r io.Reader) (fm FrontMatter, exists bool, err error) {
 
 		res := strings.SplitN(line, frontMatterFieldSep, 2)
 		if len(res) != 2 {
-			err = fmt.Errorf("styx: error: front matter %q should be in format \"key: val\"", line)
+			err = fmt.Errorf("styx: error: front matter %q should be in format \"key %s val\"", frontMatterFieldSep, line)
 			return
 		}
 		key, val := clean(res[0]), clean(res[1])

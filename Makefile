@@ -4,6 +4,7 @@ init:
 
 build:
 	rm -rf here
+	fmap -var rawFiles src/ | gofmt > file.go
 	go build
 	./styx init here
 	./styx -workdir here build

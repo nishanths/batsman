@@ -23,13 +23,14 @@ flags:
   -watch    whether to regenerate static files on change while serving (default: false)
   -title    title of new markdown file (default: "")
   -draft    whether new markdown file is a draft (default: false)
-  -workdir  path to site's root directory (default: "./")
+  -workdir  path to site's root directory (default: ".")
+  -verbose  verbose output (only supported for build)
 
 commands:
   init     initialize new site at specified path
   new      print new markdown file to stdout
-  build    generate static files into "build/" directory
-  serve    serve "build/" directory via http
+  build    generate static files into "build" directory
+  serve    serve "build" directory via http
   summary  print site summary to stdout`
 
 // TODO: deploy? Makefile?
@@ -43,8 +44,8 @@ var (
 	stderr = log.New(os.Stderr, "", 0)
 )
 
-// currentTime is set once in main and should
-// be used instead of time.Now() so that the same
+// currentTime is set once in main and is
+// used instead of time.Now() so that the same
 // timestamp is used everywhere.
 var currentTime time.Time
 
@@ -64,7 +65,7 @@ func main() {
 	flag.BoolVar(&flags.Watch, "watch", false, "")
 	flag.StringVar(&flags.Title, "title", "", "")
 	flag.BoolVar(&flags.Draft, "draft", false, "")
-	flag.StringVar(&flags.WorkDir, "workdir", "./", "")
+	flag.StringVar(&flags.WorkDir, "workdir", ".", "")
 	flag.BoolVar(&flags.Help, "help", false, "")
 	flag.BoolVar(&flags.Version, "version", false, "")
 
@@ -165,7 +166,7 @@ func computeAbsDir(p string) (string, error) {
 	return filepath.Join(wd, p), nil
 }
 
-// do calls cmd.Run and exits with exit code 1 if the
+// do runs Cmd and exits with exit code 1 if the
 // returned error is non-nil or with exit code 0 if
 // the error is nil.
 func do(cmd Cmd) {
@@ -323,6 +324,8 @@ func pathExists(p string) (bool, error) {
 	return true, err
 }
 
+// createFile creates a file with the supplied name.
+// If the error is non-nil, the caller is responsible for calling Close.
 func createFile(name string) (*os.File, error) {
 	if err := os.MkdirAll(filepath.Dir(name), perm.dir); err != nil {
 		return nil, err
