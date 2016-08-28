@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -28,6 +29,22 @@ type FrontMatter struct {
 	Title string
 	Time  time.Time
 }
+
+// FrontMatterSep is the separator between front matter
+// and content.
+const FrontMatterSep = `+++`
+
+// FrontMatterSepBytes is FrontMatterSep as []byte.
+var FrontMatterSepBytes = []byte(FrontMatterSep)
+
+var frontMatterFieldSep = `=`
+
+var knownTimeFormats = []string{
+	"2006-01-02 15:04:05 -07:00",
+	"2006-01-02 15:04:05",
+	"2006-01-02",
+}
+var defaultTimeFormat = knownTimeFormats[0]
 
 // String returns a representation that matches the front matter
 // representation in a file.
@@ -62,13 +79,6 @@ func (e *InvalidFrontMatterError) Error() string {
 	return s
 }
 
-var knownTimeFormats = []string{
-	"2006-01-02 15:04:05 -07:00",
-	"2006-01-02 15:04:05",
-	"2006-01-02",
-}
-var defaultTimeFormat = knownTimeFormats[0]
-
 func (f *FrontMatter) fromMap(m map[string]string) error {
 	v := m["draft"]
 	if v == "true" {
@@ -98,34 +108,27 @@ func (f *FrontMatter) fromMap(m map[string]string) error {
 	return nil
 }
 
-// FrontMatterSep is the separator between front matter
-// and content.
-const FrontMatterSep = `+++`
-
-// FrontMatterSepBytes is FrontMatterSep as []byte.
-var FrontMatterSepBytes = []byte(FrontMatterSep)
-
-var frontMatterFieldSep = `=`
+var ErrNoFrontMatter = errors.New("no front matter")
 
 // ParseFrontMatter parses front matter from r.
-func ParseFrontMatter(r io.Reader) (fm FrontMatter, exists bool, err error) {
+// If r is empty or there is no front matter, the error
+// is ErrNoFrontMatter.
+func (fm *FrontMatter) Parse(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
 	ok := scanner.Scan()
 	if !ok {
-		return
+		return ErrNoFrontMatter
 	}
 	first := scanner.Text()
 	if first != FrontMatterSep {
-		return // No front matter.
+		return ErrNoFrontMatter
 	}
-	exists = true
 
 	m := map[string]string{
 		"draft": "",
 		"title": "",
 		"time":  "",
 	}
-
 	clean := func(s string) string {
 		return strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(s), `"`), `"`)
 	}
@@ -133,20 +136,18 @@ func ParseFrontMatter(r io.Reader) (fm FrontMatter, exists bool, err error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == FrontMatterSep {
-			break // end of front matter.
+			break // End of front matter.
 		}
 
 		res := strings.SplitN(line, frontMatterFieldSep, 2)
 		if len(res) != 2 {
-			err = fmt.Errorf("styx: error: front matter %q should be in format \"key %s val\"", frontMatterFieldSep, line)
-			return
+			return fmt.Errorf("styx: error: front matter %q should be in format \"key %s val\"", line, frontMatterFieldSep)
 		}
 		key, val := clean(res[0]), clean(res[1])
 		m[key] = val
 	}
 
-	err = fm.fromMap(m)
-	return
+	return fm.fromMap(m)
 }
 
 // stripFrontMatter removes front matter (if any) from the input

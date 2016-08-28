@@ -16,40 +16,45 @@ import (
 )
 
 type Build struct {
-	WorkDir string // Absolute path of work dir.
+	// Plugins is the list of plugins applied
+	// on markdown files.
+	Plugins texttemplate.FuncMap
 }
 
-var markdownExts = map[string]bool{
+// MarkdownExts is the extensions considered to be markdown files.
+var MarkdownExts = map[string]bool{
 	".md":       true,
 	".markdown": true,
 }
 
+// TemplateArgs contains the data available to each template.
+// Current is only available in "layout.tmpl" files.
 type TemplateArgs struct {
-	Current *Page   // Current file.
-	Dir     []*Page // All files in the same directory.
-	All     map[string][]*Page
+	Current *Page              // Current file.
+	Dir     []*Page            // Pages in the same directory.
+	All     map[string][]*Page // All pages in the tree.
 }
 
+// Page represents a markdown file.
 type Page struct {
 	Content template.HTML // HTML content generated from markdown.
 	Title   string        // Title from front matter.
-	Time    time.Time     // Timestamp from front matter.
-	Path    string        // HTTP path.
+	Time    time.Time     // Timestamp from front matter or file's last modified time.
+	Path    string        // HTTP path at which the page lives.
 }
 
-func (p *Page) FormatTime(layout string) string {
-	return p.Time.Format(layout)
-}
-
+// ByTime is used to sort Pages in reverse chronological order.
 type ByTime []*Page
 
 func (a ByTime) Len() int           { return len(a) }
 func (a ByTime) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByTime) Less(i, j int) bool { return a[i].Time.Before(a[j].Time) }
+func (a ByTime) Less(i, j int) bool { return !a[i].Time.Before(a[j].Time) }
 
-func (b *Build) makePages(root string) (map[string]*Page, map[string][]*Page, error) {
+func (b *Build) makePages(root string) (pages map[string]*Page, all map[string][]*Page, err error) {
 	mx := sync.Mutex{}
-	ret := make(map[string]*Page)
+	pages = make(map[string]*Page)
+	all = make(map[string][]*Page)
+
 	type result struct {
 		Dir  string
 		Page *Page
@@ -58,14 +63,14 @@ func (b *Build) makePages(root string) (map[string]*Page, map[string][]*Page, er
 	wg := sync.WaitGroup{}
 	results := make(chan result)
 
-	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+	err = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
 			return nil
 		}
-		if !markdownExts[filepath.Ext(p)] {
+		if !MarkdownExts[filepath.Ext(p)] {
 			return nil
 		}
 
@@ -80,12 +85,13 @@ func (b *Build) makePages(root string) (map[string]*Page, map[string][]*Page, er
 			}
 
 			page := &Page{}
+
 			innerWg := sync.WaitGroup{}
 			innerWg.Add(1)
 			go func() {
 				defer innerWg.Done()
 				buf := bytes.Buffer{}
-				t, err := texttemplate.New("content").Funcs(plugins).Parse(string(contents))
+				t, err := texttemplate.New("content").Funcs(b.Plugins).Parse(string(contents))
 				if err != nil {
 					results <- result{Err: err}
 					return
@@ -94,45 +100,45 @@ func (b *Build) makePages(root string) (map[string]*Page, map[string][]*Page, er
 					results <- result{Err: err}
 					return
 				}
-				page.Content = template.HTML(
-					blackfriday.MarkdownCommon(stripFrontMatter(buf.Bytes())),
-				)
+				page.Content = template.HTML(blackfriday.MarkdownCommon(stripFrontMatter(buf.Bytes())))
 			}()
 
-			fm, ok, err := ParseFrontMatter(bytes.NewReader(contents))
-			if err != nil {
+			fm := FrontMatter{}
+			err = fm.Parse(bytes.NewReader(contents))
+			if err != nil && err != ErrNoFrontMatter {
 				results <- result{Err: err}
 				return
 			}
-			if ok {
+			if fm.Draft {
+				return
+			}
+			if err != ErrNoFrontMatter {
 				page.Title = fm.Title
 				page.Time = fm.Time
 			} else {
 				page.Time = info.ModTime()
 			}
-			if fm.Draft {
-				return
-			}
 
 			innerWg.Wait()
+
 			mx.Lock()
-			ret[p] = page
+			pages[p] = page
 			mx.Unlock()
-			rel, err := filepath.Rel(b.WorkDir, p)
+
+			rel, err := filepath.Rel(filepath.Join(".", "src"), p)
 			if err != nil {
 				results <- result{Err: err}
 				return
 			}
-			s := strings.TrimPrefix(rel, "src"+string([]rune{filepath.Separator}))
-			page.Path = "/" + filepath.ToSlash(changeExt(s, ".html"))
-			results <- result{filepath.Dir(s), page, nil}
+			page.Path = "/" + filepath.ToSlash(changeExt(rel, ".html"))
+			results <- result{filepath.Dir(rel), page, nil}
 		}()
 
 		return nil
 	})
 
 	if err != nil {
-		return nil, nil, err
+		return
 	}
 
 	go func() {
@@ -140,17 +146,19 @@ func (b *Build) makePages(root string) (map[string]*Page, map[string][]*Page, er
 		close(results)
 	}()
 
-	all := make(map[string][]*Page)
 	for r := range results {
 		if r.Err != nil {
 			err = r.Err
 		}
 		all[r.Dir] = append(all[r.Dir], r.Page)
 	}
+	if err != nil {
+		return
+	}
 	for k := range all {
 		sort.Sort(ByTime(all[k]))
 	}
-	return ret, all, err
+	return
 }
 
 // changeExt switches the file extension in s to newExt.
@@ -161,12 +169,12 @@ func changeExt(s, newExt string) string {
 }
 
 func (b *Build) Run() error {
-	src := filepath.Join(b.WorkDir, "src")
-	build := filepath.Join(b.WorkDir, "build")
+	src := "src"
+	build := "build"
 
 	filePage, dirPages, err := b.makePages(src)
 	if err != nil {
-		return WrapError{err}
+		return err
 	}
 
 	// dirLayout is a map from directory name to the layout template for the
@@ -191,49 +199,38 @@ func (b *Build) Run() error {
 			case info.IsDir() || info.Name() == "layout.tmpl":
 				return
 
-			case markdownExts[filepath.Ext(p)]:
+			case MarkdownExts[filepath.Ext(p)]:
 				// Get layout template.
-				tmpl, ok := dirLayout.m[filepath.Dir(p)]
+				ltmpl, ok := dirLayout.m[filepath.Dir(p)]
 				if !ok {
 					var err error
-					tmpl, err = template.ParseFiles(filepath.Join(filepath.Dir(p), "layout.tmpl"))
+					ltmpl, err = template.ParseFiles(filepath.Join(filepath.Dir(p), "layout.tmpl"))
 					if err != nil {
 						errs <- err
 						return
 					}
 					dirLayout.Lock()
-					dirLayout.m[filepath.Dir(p)] = tmpl
+					dirLayout.m[filepath.Dir(p)] = ltmpl
 					dirLayout.Unlock()
 				}
-				// Create file with same name and .html extension in build.
+				// Create file with same name but .html extension in build.
 				rem, err := filepath.Rel(src, p)
 				if err != nil {
 					errs <- err
 					return
 				}
-				buf := bytes.Buffer{}
 				f, err := createFile(changeExt(filepath.Join(build, rem), ".html"))
 				if err != nil {
 					errs <- err
 					return
 				}
 				defer f.Close()
-
-				if err := tmpl.Execute(&buf, TemplateArgs{
+				// Execute on layout template.
+				if err := ltmpl.Execute(f, TemplateArgs{
 					Current: filePage[p],
 					Dir:     dirPages[filepath.Dir(p)],
 					All:     dirPages,
 				}); err != nil {
-					errs <- err
-					return
-				}
-
-				t, err := template.New("content").Parse(buf.String())
-				if err != nil {
-					errs <- err
-					return
-				}
-				if err := t.Execute(f, nil); err != nil {
 					errs <- err
 					return
 				}
@@ -258,14 +255,14 @@ func (b *Build) Run() error {
 					return
 				}
 				defer f.Close()
-				rel, err := filepath.Rel(b.WorkDir, p)
+
+				rel, err := filepath.Rel(filepath.Join(".", "src"), p)
 				if err != nil {
 					errs <- err
 					return
 				}
-				s := strings.TrimPrefix(rel, "src"+string([]rune{filepath.Separator}))
 				if err := tmpl.Execute(f, TemplateArgs{
-					Dir: dirPages[s],
+					Dir: dirPages[rel],
 					All: dirPages,
 				}); err != nil {
 					errs <- err

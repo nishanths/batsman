@@ -7,7 +7,8 @@ build:
 	fmap -var rawFiles src/ | gofmt > file.go
 	go build
 	./styx init here
-	./styx -workdir here build
+	cd here
+	./styx build
 
 new:
 	rm -rf here
