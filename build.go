@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"html/template"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -13,12 +14,17 @@ import (
 	"time"
 
 	"github.com/russross/blackfriday"
+	"github.com/tdewolff/minify"
+	"github.com/tdewolff/minify/html"
 )
 
 type Build struct {
 	// Plugins is the list of plugins applied
 	// on markdown files.
 	Plugins texttemplate.FuncMap
+
+	// Minify indicates whether generated content should be minified.
+	Minify bool
 }
 
 // MarkdownExts is the extensions considered to be markdown files.
@@ -184,6 +190,9 @@ func (b *Build) Run() error {
 		m map[string]*template.Template
 	}{m: make(map[string]*template.Template)}
 
+	mf := minify.New()
+	mf.Add("text/html", &html.Minifier{})
+
 	wg := sync.WaitGroup{}
 	errs := make(chan error)
 	err = filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
@@ -225,14 +234,20 @@ func (b *Build) Run() error {
 					return
 				}
 				defer f.Close()
-				// Execute on layout template.
-				if err := ltmpl.Execute(f, TemplateArgs{
+
+				w := mf.Writer("text/html", f)
+				defer w.Close()
+				if err := ltmpl.Execute(w, TemplateArgs{
 					Current: filePage[p],
 					Dir:     dirPages[filepath.Dir(p)],
 					All:     dirPages,
 				}); err != nil {
-					errs <- err
-					return
+					// TODO(nishanths): Fix this check. Appears to be issue
+					// with minify package.
+					if err != io.ErrClosedPipe {
+						errs <- err
+						return
+					}
 				}
 				f.Sync()
 

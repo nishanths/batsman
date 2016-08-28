@@ -29,10 +29,11 @@ commands:
   serve  serve "build" directory via http
 
 flags:
-  -http   http address to serve site (default: "localhost:8080")
-  -watch  whether to regenerate on change while serving (default: false)
-  -title  title of new markdown file (default: "")
-  -draft  whether new markdown file is a draft (default: false)`
+  -http       http address to serve at (default: "localhost:8080")
+  -watch      regenerate files on change while serving (default: false)
+  -no-minify  don't minify generated content (default: false)
+  -title      title of new markdown file (default: "")
+  -draft      whether new markdown file is a draft (default: false)`
 
 var (
 	perm = struct {
@@ -43,19 +44,22 @@ var (
 	stderr = log.New(os.Stderr, "", 0)
 )
 
+var flags = struct {
+	HTTP   string
+	Watch  bool
+	Title  string
+	Draft  bool
+	Minify bool
+
+	Help    bool
+	Version bool
+}{}
+
 func main() {
-	flags := struct {
-		HTTP  string
-		Watch bool
-		Title string
-		Draft bool
-
-		Help    bool
-		Version bool
-	}{}
-
 	flag.StringVar(&flags.HTTP, "http", "localhost:8080", "")
 	flag.BoolVar(&flags.Watch, "watch", false, "")
+	noMinify := flag.Bool("no-minify", false, "")
+	flags.Minify = !*noMinify
 	flag.StringVar(&flags.Title, "title", "", "")
 	flag.BoolVar(&flags.Draft, "draft", false, "")
 	flag.BoolVar(&flags.Help, "help", false, "")
@@ -98,7 +102,7 @@ func main() {
 			Draft: flags.Draft,
 		})
 	case "build":
-		do(&Build{plugins})
+		do(&Build{plugins, flags.Minify})
 	case "serve":
 		do(&Serve{
 			Watch: flags.Watch,
@@ -122,34 +126,9 @@ func do(cmd Cmd) {
 	os.Exit(0)
 }
 
-// isEmpty returns whether a directory is empty.
-func isEmpty(name string) (bool, error) {
-	f, err := os.Open(name)
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-
-	_, err = f.Readdirnames(1)
-	if err == io.EOF {
-		return true, nil
-	}
-	return false, err // Either nil or error, suits both cases.
-}
-
 type Cmd interface {
-	// Run executes the command. The error strings returned
-	// should be prefixed with "styx: ".
+	// Run executes the command.
 	Run() error
-}
-
-func copyFile(dst, src string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	return createFileWithData(dst, in)
 }
 
 type New struct {
@@ -167,7 +146,7 @@ func (n *New) Run() error {
 }
 
 type Initialize struct {
-	Path string // Path initialize new site at.
+	Path string // Path to initialize new site at.
 }
 
 func (init *Initialize) Run() error {
@@ -237,6 +216,11 @@ type Serve struct {
 }
 
 func (s *Serve) Run() error {
+	stderr.Println(`generating "build" directory ...`)
+	if err := (&Build{plugins, flags.Minify}).Run(); err != nil {
+		return err
+	}
+
 	if s.Watch {
 		w, err := fsnotify.NewWatcher()
 		if err != nil {
@@ -260,7 +244,7 @@ func (s *Serve) Run() error {
 			go func() {
 				for e := range w.Event {
 					stderr.Printf("rebuilding change: %q ... ", e.Name)
-					if err := (&Build{plugins}).Run(); err != nil {
+					if err := (&Build{plugins, flags.Minify}).Run(); err != nil {
 						stderr.Println("error: rebuild:", err)
 					} else {
 						stderr.Printf("done rebuilding")
@@ -276,7 +260,7 @@ func (s *Serve) Run() error {
 		}
 	}
 
-	stderr.Printf("serving http on %s ...\n", s.HTTP)
+	stderr.Printf("serving \"build\" directory at http://%s ...\n", s.HTTP)
 	return http.ListenAndServe(s.HTTP, http.FileServer(http.Dir("build")))
 }
 
@@ -314,4 +298,28 @@ func createFileWithData(name string, data io.Reader) error {
 		return err
 	}
 	return f.Sync()
+}
+
+// isEmpty returns whether a directory is empty.
+func isEmpty(name string) (bool, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	_, err = f.Readdirnames(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err // Either nil or error, suits both cases.
+}
+
+func copyFile(dst, src string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	return createFileWithData(dst, in)
 }
