@@ -148,12 +148,12 @@ func (fm *FrontMatter) Parse(r io.Reader) error {
 	return fm.fromMap(m)
 }
 
-// stripFrontMatter removes front matter (if any) from the input
+// trimFrontMatter removes front matter (if any) from the input
 // and returns the result.
 //
 // The function works on []byte to facililate working with
 // blackfriday functions.
-func stripFrontMatter(b []byte) []byte {
+func trimFrontMatter(b []byte) []byte {
 	if !bytes.HasPrefix(b, FrontMatterSepBytes) {
 		return b
 	}

@@ -108,7 +108,7 @@ func (b *Build) makePages(root string) (pages map[string]*Page, all map[string][
 					results <- result{Err: err}
 					return
 				}
-				page.Content = template.HTML(blackfriday.MarkdownCommon(stripFrontMatter(buf.Bytes())))
+				page.Content = template.HTML(blackfriday.MarkdownCommon(trimFrontMatter(buf.Bytes())))
 			}()
 
 			fm := FrontMatter{}

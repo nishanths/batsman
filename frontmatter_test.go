@@ -26,9 +26,9 @@ title = foo
 	}
 
 	for _, tc := range testcases {
-		res := stripFrontMatter(tc.in)
+		res := trimFrontMatter(tc.in)
 		if !bytes.Equal(res, tc.expected) {
-			t.Fatalf("stripFrontMatter: got %s, expected %s", res, tc.expected)
+			t.Fatalf("trimFrontMatter: got %s, expected %s", res, tc.expected)
 		}
 	}
 }
