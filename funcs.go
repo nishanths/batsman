@@ -8,7 +8,7 @@ import (
 	texttemplate "text/template"
 )
 
-var plugins = texttemplate.FuncMap{
+var funcs = texttemplate.FuncMap{
 	"Gist": func(v ...interface{}) (template.HTML, error) {
 		switch len(v) {
 		case 1:

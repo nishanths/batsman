@@ -98,7 +98,7 @@ func main() {
 			Draft: flags.Draft,
 		})
 	case "build":
-		do(&Build{plugins})
+		do(&Build{funcs})
 	case "serve":
 		do(&Serve{
 			Watch: flags.Watch,
@@ -213,7 +213,7 @@ type Serve struct {
 
 func (s *Serve) Run() error {
 	stderr.Println(`generating "build" directory ...`)
-	if err := (&Build{plugins}).Run(); err != nil {
+	if err := (&Build{funcs}).Run(); err != nil {
 		return err
 	}
 
@@ -239,7 +239,7 @@ func (s *Serve) Run() error {
 			go func() {
 				for e := range w.Event {
 					stderr.Printf("rebuilding change: %q ... ", e.Name)
-					if err := (&Build{plugins}).Run(); err != nil {
+					if err := (&Build{funcs}).Run(); err != nil {
 						stderr.Println("error: rebuild:", err)
 					} else {
 						stderr.Printf("done")

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"io"
 	"io/ioutil"
@@ -23,9 +24,9 @@ import (
 )
 
 type Build struct {
-	// Plugins is the list of plugins applied
+	// Funcs is the list of plugins applied
 	// on markdown files.
-	Plugins texttemplate.FuncMap
+	Funcs texttemplate.FuncMap
 }
 
 // MarkdownExts is the extensions considered to be markdown files.
@@ -98,7 +99,7 @@ func (b *Build) makePages(root string) (pages map[string]*Page, all map[string][
 			go func() {
 				defer innerWg.Done()
 				buf := bytes.Buffer{}
-				t, err := texttemplate.New("content").Funcs(b.Plugins).Parse(string(contents))
+				t, err := texttemplate.New("content").Funcs(b.Funcs).Parse(string(contents))
 				if err != nil {
 					results <- result{Err: err}
 					return
@@ -269,6 +270,9 @@ func (b *Build) Run() error {
 					var err error
 					ltmpl, err = template.ParseFiles(filepath.Join(filepath.Dir(p), "layout.tmpl"))
 					if err != nil {
+						if os.IsNotExist(err) {
+							err = fmt.Errorf("missing layouts.tmpl file in %q", p)
+						}
 						errs <- err
 						return
 					}
