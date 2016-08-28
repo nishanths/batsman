@@ -89,10 +89,7 @@ func (f *FrontMatter) fromMap(m map[string]string) error {
 
 	f.Title = m["title"]
 
-	v = m["time"]
-	if v == "" {
-		f.Time = currentTime
-	} else {
+	if m["time"] != "" {
 		for i, format := range knownTimeFormats {
 			t, err := time.Parse(format, v)
 			if err == nil {

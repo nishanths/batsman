@@ -16,25 +16,23 @@ import (
 	"github.com/howeyc/fsnotify"
 )
 
-// TODO(nishanths): deploy (Makefile?), -verbose, watch serve.
+// TODO(nishanths): deploy (Makefile?)
 
 const versionString = "0.1.0"
-const usageString = `usage:
-  styx [flags] [command]`
-const helpString = usageString + `
+const helpString = `usage:
+  styx [flags] [command]
 
 commands:
   init   initialize new site at specified path
-  new    print new markdown file to stdout
+  new    print new markdown file with front matter to stdout
   build  generate static files into "build" directory
   serve  serve "build" directory via http
 
 flags:
-  -http     http address to serve site (default: "localhost:8080")
-  -watch    whether to regenerate static files on change while serving (default: false)
-  -title    title of new markdown file (default: "")
-  -draft    whether new markdown file is a draft (default: false)
-  -verbose  verbose output (only supported for build command)`
+  -http   http address to serve site (default: "localhost:8080")
+  -watch  whether to regenerate on change while serving (default: false)
+  -title  title of new markdown file (default: "")
+  -draft  whether new markdown file is a draft (default: false)`
 
 var (
 	perm = struct {
@@ -44,11 +42,6 @@ var (
 	stdout = log.New(os.Stdout, "", 0)
 	stderr = log.New(os.Stderr, "", 0)
 )
-
-// currentTime is set once in main and is
-// used instead of time.Now() so that the same
-// timestamp is used everywhere.
-var currentTime time.Time
 
 func main() {
 	flags := struct {
@@ -95,8 +88,6 @@ func main() {
 		stdout.Println("v" + versionString)
 		os.Exit(0)
 	}
-
-	currentTime = time.Now()
 
 	switch command {
 	case "init":
@@ -191,7 +182,7 @@ func (n *New) Run() error {
 	stdout.Print(FrontMatter{
 		Title: n.Title,
 		Draft: n.Draft,
-		Time:  currentTime,
+		Time:  time.Now(),
 	})
 	return nil
 }
@@ -273,7 +264,7 @@ func (s *Serve) Run() error {
 			return err
 		}
 		defer w.Close()
-		stderr.Println(`watching "src/*/**" for changes ...`)
+		stderr.Println(`watching "src/**/*" for changes ...`)
 
 		if err := filepath.Walk("src", func(p string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -283,25 +274,23 @@ func (s *Serve) Run() error {
 				return nil
 			}
 			go func() {
-				go func() {
-					for err := range w.Error {
-						stderr.Println("error: watch:", err)
-					}
-				}()
-				go func() {
-					for e := range w.Event {
-						stderr.Printf("rebuilding change: %q ... ", e.Name)
-						if err := (&Build{plugins}).Run(); err != nil {
-							stderr.Println("error: rebuild:", err)
-						} else {
-							stderr.Printf("done rebuilding")
-						}
-					}
-				}()
-				if err := w.Watch(p); err != nil {
+				for err := range w.Error {
 					stderr.Println("error: watch:", err)
 				}
 			}()
+			go func() {
+				for e := range w.Event {
+					stderr.Printf("rebuilding change: %q ... ", e.Name)
+					if err := (&Build{plugins}).Run(); err != nil {
+						stderr.Println("error: rebuild:", err)
+					} else {
+						stderr.Printf("done rebuilding")
+					}
+				}
+			}()
+			if err := w.Watch(p); err != nil {
+				stderr.Println("error: watch:", err)
+			}
 			return nil
 		}); err != nil {
 			return err
