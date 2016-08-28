@@ -223,7 +223,6 @@ func (s *Serve) Run() error {
 			return err
 		}
 		defer w.Close()
-		stderr.Println(`watching "src/**/*" for changes ...`)
 
 		if err := filepath.Walk("src", func(p string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -239,11 +238,11 @@ func (s *Serve) Run() error {
 			}()
 			go func() {
 				for e := range w.Event {
-					stderr.Printf("rebuilding change: %q ... ", filepath.Join(p, e.Name))
+					stderr.Printf("rebuilding change: %q ... ", e.Name)
 					if err := (&Build{plugins}).Run(); err != nil {
 						stderr.Println("error: rebuild:", err)
 					} else {
-						stderr.Printf("done rebuilding")
+						stderr.Printf("done")
 					}
 				}
 			}()
@@ -254,9 +253,11 @@ func (s *Serve) Run() error {
 		}); err != nil {
 			return err
 		}
+
+		stderr.Println(`watching "src/**/*" for changes ...`)
 	}
 
-	stderr.Printf("serving \"build\" directory at http://%s ...\n", s.HTTP)
+	stderr.Printf("serving \"build\" directory on HTTP on %s ...\n", s.HTTP)
 	return http.ListenAndServe(s.HTTP, http.FileServer(http.Dir("build")))
 }
 

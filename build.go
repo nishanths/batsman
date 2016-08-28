@@ -134,7 +134,7 @@ func (b *Build) makePages(root string) (pages map[string]*Page, all map[string][
 				results <- result{Err: err}
 				return
 			}
-			page.Path = "/" + filepath.ToSlash(changeExt(rel, ".html"))
+			page.Path = "/" + filepath.ToSlash(stripExt(rel))
 			results <- result{filepath.Dir(rel), page, nil}
 		}()
 
@@ -165,11 +165,15 @@ func (b *Build) makePages(root string) (pages map[string]*Page, all map[string][
 	return
 }
 
+func stripExt(s string) string {
+	return strings.TrimSuffix(s, filepath.Ext(s))
+}
+
 // changeExt switches the file extension in s to newExt.
 // newExt is expected to start with ".". For example, ".txt".
 // If s does not have a file extension, newExt is simply appended to s.
 func changeExt(s, newExt string) string {
-	return strings.TrimSuffix(s, filepath.Ext(s)) + newExt
+	return stripExt(s) + newExt
 }
 
 func (b *Build) Run() error {
@@ -220,13 +224,13 @@ func (b *Build) Run() error {
 					dirLayout.m[filepath.Dir(p)] = ltmpl
 					dirLayout.Unlock()
 				}
-				// Create file with same name but .html extension in build.
+				// Create index.html in a directory with same name in build.
 				rem, err := filepath.Rel(src, p)
 				if err != nil {
 					errs <- err
 					return
 				}
-				f, err := createFile(changeExt(filepath.Join(build, rem), ".html"))
+				f, err := createFile(filepath.Join(build, stripExt(rem), "index.html"))
 				if err != nil {
 					errs <- err
 					return

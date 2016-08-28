@@ -22,8 +22,6 @@ import (
 //   draft = true
 //   +++
 //
-// The hh:mm:ss and time zone are optional when parsing with
-// ParseFrontMatter.
 type FrontMatter struct {
 	Draft bool
 	Title string
@@ -37,14 +35,17 @@ const FrontMatterSep = `+++`
 // FrontMatterSepBytes is FrontMatterSep as []byte.
 var FrontMatterSepBytes = []byte(FrontMatterSep)
 
-var frontMatterFieldSep = `=`
+// FrontMatterFieldSep is the separator between key and value.
+const FrontMatterFieldSep = ` = `
 
-var knownTimeFormats = []string{
+// KnownTimeFormats is the the accepted time formats for time
+// in front matter.
+var KnownTimeFormats = []string{
 	"2006-01-02 15:04:05 -07:00",
 	"2006-01-02 15:04:05",
 	"2006-01-02",
 }
-var defaultTimeFormat = knownTimeFormats[0]
+var defaultTimeFormat = KnownTimeFormats[0]
 
 // String returns a representation that matches the front matter
 // representation in a file.
@@ -52,12 +53,12 @@ func (fm *FrontMatter) String() string {
 	buf := bytes.Buffer{}
 	buf.WriteString(FrontMatterSep + "\n")
 	if fm.Title != "" {
-		buf.WriteString(fmt.Sprintf("title %s %q\n", frontMatterFieldSep, fm.Title))
+		buf.WriteString(fmt.Sprintf("title %s %q\n", FrontMatterFieldSep, fm.Title))
 	}
 	if fm.Draft {
-		buf.WriteString(fmt.Sprintf("draft %s %t\n", frontMatterFieldSep, fm.Draft))
+		buf.WriteString(fmt.Sprintf("draft %s %t\n", FrontMatterFieldSep, fm.Draft))
 	}
-	buf.WriteString(fmt.Sprintf("time %s %q\n", frontMatterFieldSep, fm.Time.Format(defaultTimeFormat)))
+	buf.WriteString(fmt.Sprintf("time %s %q\n", FrontMatterFieldSep, fm.Time.Format(defaultTimeFormat)))
 	buf.WriteString(FrontMatterSep + "\n")
 	return buf.String()
 }
@@ -90,14 +91,14 @@ func (f *FrontMatter) fromMap(m map[string]string) error {
 	f.Title = m["title"]
 
 	if m["time"] != "" {
-		for i, format := range knownTimeFormats {
+		for i, format := range KnownTimeFormats {
 			t, err := time.Parse(format, v)
 			if err == nil {
 				f.Time = t
 				break
 			}
-			if i == len(knownTimeFormats)-1 {
-				return &InvalidFrontMatterError{"time", v, knownTimeFormats}
+			if i == len(KnownTimeFormats)-1 {
+				return &InvalidFrontMatterError{"time", v, KnownTimeFormats}
 			}
 		}
 	}
@@ -107,9 +108,9 @@ func (f *FrontMatter) fromMap(m map[string]string) error {
 
 var ErrNoFrontMatter = errors.New("no front matter")
 
-// ParseFrontMatter parses front matter from r.
+// Parse parses front matter in r.
 // If r is empty or there is no front matter, the error
-// is ErrNoFrontMatter.
+// will be ErrNoFrontMatter.
 func (fm *FrontMatter) Parse(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
 	ok := scanner.Scan()
@@ -136,9 +137,9 @@ func (fm *FrontMatter) Parse(r io.Reader) error {
 			break // End of front matter.
 		}
 
-		res := strings.SplitN(line, frontMatterFieldSep, 2)
+		res := strings.SplitN(line, FrontMatterFieldSep, 2)
 		if len(res) != 2 {
-			return fmt.Errorf("styx: error: front matter %q should be in format \"key %s val\"", line, frontMatterFieldSep)
+			return fmt.Errorf("styx: error: front matter %q should be in format \"key%sval\"", line, FrontMatterFieldSep)
 		}
 		key, val := clean(res[0]), clean(res[1])
 		m[key] = val
