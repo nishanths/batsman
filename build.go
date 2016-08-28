@@ -22,9 +22,6 @@ type Build struct {
 	// Plugins is the list of plugins applied
 	// on markdown files.
 	Plugins texttemplate.FuncMap
-
-	// Minify indicates whether generated content should be minified.
-	Minify bool
 }
 
 // MarkdownExts is the extensions considered to be markdown files.

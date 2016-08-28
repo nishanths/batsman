@@ -29,11 +29,10 @@ commands:
   serve  serve "build" directory via http
 
 flags:
-  -http       http address to serve at (default: "localhost:8080")
-  -watch      regenerate files on change while serving (default: false)
-  -no-minify  don't minify generated content (default: false)
-  -title      title of new markdown file (default: "")
-  -draft      whether new markdown file is a draft (default: false)`
+  -http   http address to serve at (default: "localhost:8080")
+  -watch  regenerate files on change while serving (default: false)
+  -title  title of new markdown file (default: "")
+  -draft  whether new markdown file is a draft (default: false)`
 
 var (
 	perm = struct {
@@ -45,11 +44,10 @@ var (
 )
 
 var flags = struct {
-	HTTP   string
-	Watch  bool
-	Title  string
-	Draft  bool
-	Minify bool
+	HTTP  string
+	Watch bool
+	Title string
+	Draft bool
 
 	Help    bool
 	Version bool
@@ -58,8 +56,6 @@ var flags = struct {
 func main() {
 	flag.StringVar(&flags.HTTP, "http", "localhost:8080", "")
 	flag.BoolVar(&flags.Watch, "watch", false, "")
-	noMinify := flag.Bool("no-minify", false, "")
-	flags.Minify = !*noMinify
 	flag.StringVar(&flags.Title, "title", "", "")
 	flag.BoolVar(&flags.Draft, "draft", false, "")
 	flag.BoolVar(&flags.Help, "help", false, "")
@@ -102,7 +98,7 @@ func main() {
 			Draft: flags.Draft,
 		})
 	case "build":
-		do(&Build{plugins, flags.Minify})
+		do(&Build{plugins})
 	case "serve":
 		do(&Serve{
 			Watch: flags.Watch,
@@ -217,7 +213,7 @@ type Serve struct {
 
 func (s *Serve) Run() error {
 	stderr.Println(`generating "build" directory ...`)
-	if err := (&Build{plugins, flags.Minify}).Run(); err != nil {
+	if err := (&Build{plugins}).Run(); err != nil {
 		return err
 	}
 
@@ -244,7 +240,7 @@ func (s *Serve) Run() error {
 			go func() {
 				for e := range w.Event {
 					stderr.Printf("rebuilding change: %q ... ", e.Name)
-					if err := (&Build{plugins, flags.Minify}).Run(); err != nil {
+					if err := (&Build{plugins}).Run(); err != nil {
 						stderr.Println("error: rebuild:", err)
 					} else {
 						stderr.Printf("done rebuilding")
