@@ -20,7 +20,7 @@ import (
 
 const versionString = "0.1.0"
 const helpString = `usage:
-  styx [flags] [command]
+  batsman [flags] [command]
 
 commands:
   init   initialize new site at specified path
@@ -106,7 +106,7 @@ func main() {
 		})
 	default:
 		stderr.Printf("unknown command %q\n", command)
-		stderr.Println(`run "styx -help" for usage`)
+		stderr.Println(`run "batsman -help" for usage`)
 		os.Exit(2)
 	}
 }
@@ -116,7 +116,7 @@ func main() {
 // the error is nil.
 func do(cmd Cmd) {
 	if err := cmd.Run(); err != nil {
-		stderr.Println("styx: error:", err)
+		stderr.Println("batsman: error:", err)
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -147,7 +147,7 @@ type Initialize struct {
 
 func (init *Initialize) Run() error {
 	if init.Path == "" {
-		return errors.New("init requires path argument\nexample: styx init /path/to/new/site")
+		return errors.New("init requires path argument\nexample: batsman init path/to/new/site")
 	}
 
 	root := init.Path
