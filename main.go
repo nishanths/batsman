@@ -105,7 +105,7 @@ func main() {
 			HTTP:  flags.HTTP,
 		})
 	default:
-		stderr.Printf("styx: unknown command %q\n", command)
+		stderr.Printf("unknown command %q\n", command)
 		stderr.Println(`run "styx -help" for usage`)
 		os.Exit(2)
 	}
@@ -116,7 +116,7 @@ func main() {
 // the error is nil.
 func do(cmd Cmd) {
 	if err := cmd.Run(); err != nil {
-		stderr.Println(err)
+		stderr.Println("styx: error:", err)
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -147,7 +147,7 @@ type Initialize struct {
 
 func (init *Initialize) Run() error {
 	if init.Path == "" {
-		return errors.New("styx: init requires path argument\nexample: styx init /path/to/new/site")
+		return errors.New("init requires path argument\nexample: styx init /path/to/new/site")
 	}
 
 	root := init.Path
@@ -161,7 +161,7 @@ func (init *Initialize) Run() error {
 			return err
 		}
 		if !empty {
-			return fmt.Errorf("styx: path %q not empty", root)
+			return fmt.Errorf("path %q not empty", root)
 		}
 	}
 
@@ -233,21 +233,21 @@ func (s *Serve) Run() error {
 			}
 			go func() {
 				for err := range w.Error {
-					stderr.Println("error: watch:", err)
+					stderr.Println("watch:", err)
 				}
 			}()
 			go func() {
 				for e := range w.Event {
 					stderr.Printf("rebuilding change: %q ... ", e.Name)
 					if err := (&Build{funcs}).Run(); err != nil {
-						stderr.Println("error: rebuild:", err)
+						stderr.Println("rebuild:", err)
 					} else {
 						stderr.Printf("done")
 					}
 				}
 			}()
 			if err := w.Watch(p); err != nil {
-				stderr.Println("error: watch:", err)
+				stderr.Println("watch:", err)
 			}
 			return nil
 		}); err != nil {

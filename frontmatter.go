@@ -71,7 +71,7 @@ type InvalidFrontMatterError struct {
 }
 
 func (e *InvalidFrontMatterError) Error() string {
-	s := fmt.Sprintf("styx: error: key %q has invalid value %q", e.Key, e.Val)
+	s := fmt.Sprintf("key %q has invalid value %q", e.Key, e.Val)
 	if len(e.CorrectVals) > 0 {
 		s += fmt.Sprintf(
 			"\nexpected values/formats: {%s}", strings.Join(e.CorrectVals, ", "),
@@ -139,7 +139,7 @@ func (fm *FrontMatter) Parse(r io.Reader) error {
 
 		res := strings.SplitN(line, FrontMatterFieldSep, 2)
 		if len(res) != 2 {
-			return fmt.Errorf("styx: error: front matter %q should be in format \"key%sval\"", line, FrontMatterFieldSep)
+			return fmt.Errorf("front matter %q should be in format \"key%sval\"", line, FrontMatterFieldSep)
 		}
 		key, val := clean(res[0]), clean(res[1])
 		m[key] = val
