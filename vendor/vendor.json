@@ -1,0 +1,91 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "ZxzYc1JwJ3U6kZbw/KGuPko5lSY=",
+			"path": "github.com/howeyc/fsnotify",
+			"revision": "f0c08ee9c60704c1879025f2ae0ff3e000082c13",
+			"revisionTime": "2015-10-03T19:46:02Z"
+		},
+		{
+			"checksumSHA1": "JdYdBoNxMR+CDqTfs78cQmY8JtI=",
+			"path": "github.com/russross/blackfriday",
+			"revision": "93622da34e54fb6529bfb7c57e710f37a8d9cbd8",
+			"revisionTime": "2016-07-16T15:34:03Z"
+		},
+		{
+			"checksumSHA1": "XXTR/ftEYSqQn4+Y7wNfiJJmq9U=",
+			"path": "github.com/shurcooL/sanitized_anchor_name",
+			"revision": "10ef21a441db47d8b13ebcc5fd2310f636973c77",
+			"revisionTime": "2015-10-28T00:19:15Z"
+		},
+		{
+			"checksumSHA1": "ItM9x14tp2vRPEwTufY42XkJFe8=",
+			"path": "github.com/tdewolff/buffer",
+			"revision": "0edfcb7b750146ff879e95831de2ef53605a5cb5",
+			"revisionTime": "2016-04-27T18:11:22Z"
+		},
+		{
+			"checksumSHA1": "JZA6TYR+qyJxkO1Ytb9fNgF7mDc=",
+			"path": "github.com/tdewolff/minify",
+			"revision": "a8c81a73f37bd1cd262697338807479a7f0aba7c",
+			"revisionTime": "2016-08-22T19:25:14Z"
+		},
+		{
+			"checksumSHA1": "S41eOzuTzJtMOA7o2EWyyPXFFcs=",
+			"path": "github.com/tdewolff/minify/css",
+			"revision": "a8c81a73f37bd1cd262697338807479a7f0aba7c",
+			"revisionTime": "2016-08-22T19:25:14Z"
+		},
+		{
+			"checksumSHA1": "wNnRHqte9nqMxby5VBigLYJbUww=",
+			"path": "github.com/tdewolff/minify/html",
+			"revision": "a8c81a73f37bd1cd262697338807479a7f0aba7c",
+			"revisionTime": "2016-08-22T19:25:14Z"
+		},
+		{
+			"checksumSHA1": "hoInqnOHn/1m4nw48B6hJn/25vM=",
+			"path": "github.com/tdewolff/minify/js",
+			"revision": "a8c81a73f37bd1cd262697338807479a7f0aba7c",
+			"revisionTime": "2016-08-22T19:25:14Z"
+		},
+		{
+			"checksumSHA1": "t703FEpJSWHeVz9xBDePBd9KZ00=",
+			"path": "github.com/tdewolff/minify/svg",
+			"revision": "a8c81a73f37bd1cd262697338807479a7f0aba7c",
+			"revisionTime": "2016-08-22T19:25:14Z"
+		},
+		{
+			"checksumSHA1": "dW3/qMmvhmqylTirRfPK0by6bVE=",
+			"path": "github.com/tdewolff/parse",
+			"revision": "b4aece81178be73e7ba74fe0a678cc890fc0378f",
+			"revisionTime": "2016-08-22T18:52:28Z"
+		},
+		{
+			"checksumSHA1": "1T+1KqJweNSu0ArmBmXHjxUO+/c=",
+			"path": "github.com/tdewolff/parse/css",
+			"revision": "b4aece81178be73e7ba74fe0a678cc890fc0378f",
+			"revisionTime": "2016-08-22T18:52:28Z"
+		},
+		{
+			"checksumSHA1": "HkXHbMK85U2af+/iNNOfqQR51bA=",
+			"path": "github.com/tdewolff/parse/html",
+			"revision": "b4aece81178be73e7ba74fe0a678cc890fc0378f",
+			"revisionTime": "2016-08-22T18:52:28Z"
+		},
+		{
+			"checksumSHA1": "tZNYHHm8NPAA/MKMzH9ThJgRdZs=",
+			"path": "github.com/tdewolff/parse/js",
+			"revision": "b4aece81178be73e7ba74fe0a678cc890fc0378f",
+			"revisionTime": "2016-08-22T18:52:28Z"
+		},
+		{
+			"checksumSHA1": "hR7GEsOkEtR/doq2kiCmOF8spEg=",
+			"path": "github.com/tdewolff/strconv",
+			"revision": "3e8091f4417ebaaa3910da63a45ea394ebbfb0e3",
+			"revisionTime": "2016-04-27T18:05:39Z"
+		}
+	],
+	"rootPath": "github.com/nishanths/styx"
+}
