@@ -24,15 +24,15 @@ const helpString = `usage:
 
 commands:
   init   initialize new site at specified path
-  new    print new markdown file with front matter to stdout
+  new    print front matter for a new markdown file to stdout
   build  generate static files into "build" directory
   serve  serve "build" directory via http
 
 flags:
   -http   http address to serve at (default: "localhost:8080")
   -watch  regenerate files on change while serving (default: false)
-  -title  title of new markdown file (default: "")
-  -draft  whether new markdown file is a draft (default: false)`
+  -title  title in new markdown front matter (default: "")
+  -draft  whether draft = true in new markdown front matter (default: false)`
 
 var (
 	perm = struct {
@@ -239,7 +239,7 @@ func (s *Serve) Run() error {
 			}()
 			go func() {
 				for e := range w.Event {
-					stderr.Printf("rebuilding change: %q ... ", e.Name)
+					stderr.Printf("rebuilding change: %q ... ", filepath.Join(p, e.Name))
 					if err := (&Build{plugins}).Run(); err != nil {
 						stderr.Println("error: rebuild:", err)
 					} else {

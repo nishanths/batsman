@@ -46,7 +46,7 @@ type Page struct {
 	Path    string        // HTTP path at which the page lives.
 }
 
-// ByTime is used to sort Pages in reverse chronological order.
+// ByTime sorts pages in reverse chronological order.
 type ByTime []*Page
 
 func (a ByTime) Len() int           { return len(a) }
@@ -119,6 +119,7 @@ func (b *Build) makePages(root string) (pages map[string]*Page, all map[string][
 				page.Title = fm.Title
 				page.Time = fm.Time
 			} else {
+				page.Title = info.Name()
 				page.Time = info.ModTime()
 			}
 
