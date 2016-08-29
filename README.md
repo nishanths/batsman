@@ -1,4 +1,4 @@
-# batsman
+# batsman [![wercker status](https://app.wercker.com/status/6161d9d5bc8119f1d98c7085528bd1c2/s/master "wercker status")](https://app.wercker.com/project/byKey/6161d9d5bc8119f1d98c7085528bd1c2)
 
 batsman is a static site generator. It aims to have zero configuration and make minimum assumptions about the structure of your source directory.
 
