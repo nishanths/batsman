@@ -16,8 +16,6 @@ import (
 	"github.com/howeyc/fsnotify"
 )
 
-// TODO(nishanths): deploy (Makefile?)
-
 const versionString = "0.1.0"
 const helpString = `usage:
   batsman [flags] [command]
@@ -133,7 +131,7 @@ type New struct {
 }
 
 func (n *New) Run() error {
-	stdout.Print(FrontMatter{
+	stdout.Print(&FrontMatter{
 		Title: n.Title,
 		Draft: n.Draft,
 		Time:  time.Now(),
@@ -240,14 +238,14 @@ func (s *Serve) Run() error {
 				for e := range w.Event {
 					stderr.Printf("rebuilding change: %q ... ", e.Name)
 					if err := (&Build{funcs}).Run(); err != nil {
-						stderr.Println("rebuild:", err)
+						stderr.Println("error: rebuild:", err)
 					} else {
-						stderr.Printf("done")
+						stderr.Printf("done rebuilding")
 					}
 				}
 			}()
 			if err := w.Watch(p); err != nil {
-				stderr.Println("watch:", err)
+				stderr.Println("error: watch:", err)
 			}
 			return nil
 		}); err != nil {

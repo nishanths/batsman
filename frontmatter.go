@@ -53,12 +53,14 @@ func (fm *FrontMatter) String() string {
 	buf := bytes.Buffer{}
 	buf.WriteString(FrontMatterSep + "\n")
 	if fm.Title != "" {
-		buf.WriteString(fmt.Sprintf("title %s %q\n", FrontMatterFieldSep, fm.Title))
+		buf.WriteString(fmt.Sprintf("title%s%q\n", FrontMatterFieldSep, fm.Title))
 	}
 	if fm.Draft {
-		buf.WriteString(fmt.Sprintf("draft %s %t\n", FrontMatterFieldSep, fm.Draft))
+		buf.WriteString(fmt.Sprintf("draft%s%t\n", FrontMatterFieldSep, fm.Draft))
 	}
-	buf.WriteString(fmt.Sprintf("time %s %q\n", FrontMatterFieldSep, fm.Time.Format(defaultTimeFormat)))
+	// TODO(nishanths): Manually added a space after time for aligning the
+	// separators. Should be refactored when more fields are added.
+	buf.WriteString(fmt.Sprintf("time %s%q\n", FrontMatterFieldSep, fm.Time.Format(defaultTimeFormat)))
 	buf.WriteString(FrontMatterSep + "\n")
 	return buf.String()
 }

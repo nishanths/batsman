@@ -23,6 +23,23 @@ import (
 	"github.com/tdewolff/minify/svg"
 )
 
+var blackfridayHtmlFlags = blackfriday.HTML_USE_XHTML |
+	blackfriday.HTML_USE_SMARTYPANTS |
+	blackfriday.HTML_SMARTYPANTS_FRACTIONS |
+	blackfriday.HTML_SMARTYPANTS_DASHES |
+	blackfriday.HTML_SMARTYPANTS_LATEX_DASHES
+
+var blackfridayExtensions = blackfriday.EXTENSION_NO_INTRA_EMPHASIS |
+	blackfriday.EXTENSION_TABLES |
+	blackfriday.EXTENSION_FENCED_CODE |
+	blackfriday.EXTENSION_AUTOLINK |
+	blackfriday.EXTENSION_STRIKETHROUGH |
+	blackfriday.EXTENSION_SPACE_HEADERS |
+	blackfriday.EXTENSION_HEADER_IDS |
+	blackfriday.EXTENSION_BACKSLASH_LINE_BREAK |
+	blackfriday.EXTENSION_DEFINITION_LISTS |
+	blackfriday.EXTENSION_AUTO_HEADER_IDS
+
 type Build struct {
 	// Funcs is the list of plugins applied
 	// on markdown files.
@@ -108,7 +125,11 @@ func (b *Build) makePages(root string) (pages map[string]Page, all map[string][]
 					results <- result{Err: err}
 					return
 				}
-				page.Content = template.HTML(blackfriday.MarkdownCommon(trimFrontMatter(buf.Bytes())))
+				// NOTE(nishanths): The Renderer returned by HtmlRenderer is not safe for
+				// concurrent use, so create one each time.
+				page.Content = template.HTML(blackfriday.Markdown(
+					trimFrontMatter(buf.Bytes()), blackfriday.HtmlRenderer(blackfridayHtmlFlags, "", ""), blackfridayExtensions,
+				))
 			}()
 
 			fm := FrontMatter{}
@@ -124,7 +145,7 @@ func (b *Build) makePages(root string) (pages map[string]Page, all map[string][]
 				page.Title = fm.Title
 				page.Time = fm.Time
 			} else {
-				page.Title = info.Name()
+				page.Title = trimExt(info.Name())
 				page.Time = info.ModTime()
 			}
 
@@ -139,7 +160,7 @@ func (b *Build) makePages(root string) (pages map[string]Page, all map[string][]
 				results <- result{Err: err}
 				return
 			}
-			page.Path = "/" + path.Join(filepath.ToSlash(stripExt(rel)))
+			page.Path = "/" + path.Join(filepath.ToSlash(trimExt(rel)))
 			results <- result{filepath.Dir(rel), page, nil}
 		}()
 
@@ -170,7 +191,7 @@ func (b *Build) makePages(root string) (pages map[string]Page, all map[string][]
 	return
 }
 
-func stripExt(s string) string {
+func trimExt(s string) string {
 	return strings.TrimSuffix(s, filepath.Ext(s))
 }
 
@@ -178,7 +199,7 @@ func stripExt(s string) string {
 // newExt is expected to start with ".". For example, ".txt".
 // If s does not have a file extension, newExt is simply appended to s.
 func changeExt(s, newExt string) string {
-	return stripExt(s) + newExt
+	return trimExt(s) + newExt
 }
 
 type minifyFunc func(m *minify.M, w io.Writer, r io.Reader, params map[string]string) error
@@ -266,13 +287,15 @@ func (b *Build) Run() error {
 
 			case MarkdownExts[filepath.Ext(p)]:
 				// Get layout template.
+				dirLayout.Lock()
 				ltmpl, ok := dirLayout.m[filepath.Dir(p)]
+				dirLayout.Unlock()
 				if !ok {
 					var err error
 					ltmpl, err = template.ParseFiles(filepath.Join(filepath.Dir(p), "layout.tmpl"))
 					if err != nil {
 						if os.IsNotExist(err) {
-							err = fmt.Errorf("missing layouts.tmpl file in %q", p)
+							err = fmt.Errorf("missing layout.tmpl file in %q", p)
 						}
 						errs <- err
 						return
@@ -287,7 +310,7 @@ func (b *Build) Run() error {
 					errs <- err
 					return
 				}
-				f, err := createFile(filepath.Join(build, stripExt(rem), "index.html"))
+				f, err := createFile(filepath.Join(build, trimExt(rem), "index.html"))
 				if err != nil {
 					errs <- err
 					return
