@@ -17,13 +17,14 @@ $ batsman build           # generates content into build/
 $ batsman -watch serve    # serve and watch for changes
 ```
 
-HTML, CSS, JavaScript, and SVGs in `build/` will be minified.
+HTML, CSS, JavaScript, and SVGs in `build/` will be minified, and [optional HTML tags](https://html.spec.whatwg.org/multipage/syntax.html#syntax-tag-omission) omitted.
 
 Run `batsman -help` for available commands and flags.
 
 ## Directory Structure
 
-Running `batsman build` maps files from `src/` to `build/` by these 4 rules:
+The site source is in `src` and the generated site in `build`.
+Running `batsman build` maps files from `src` to `build` by these 4 rules:
 
 ```
 src/**/*.html          -->  build/**/*.html          (copied and executed as template)
@@ -76,7 +77,7 @@ Files that are executed as templates include:
 * `*.html`
 * `layout.tmpl` files for the markdown files in the same directory
 
-They can use the full range of features in the Go [`text/template`]() and [`html/template`]() packages.
+They can use the full range of features in the Go [`text/template`](https://godoc.org/text/template) and [`html/template`](https://godoc.org/html/template) packages.
 
 Each template has the following struct available as the dot (`.`):
 
