@@ -23,7 +23,7 @@ import (
 	"github.com/tdewolff/minify/svg"
 )
 
-var blackfridayHtmlFlags = blackfriday.HTML_USE_XHTML |
+var blackfridayHTMLFlags = blackfriday.HTML_USE_XHTML |
 	blackfriday.HTML_USE_SMARTYPANTS |
 	blackfriday.HTML_SMARTYPANTS_FRACTIONS |
 	blackfriday.HTML_SMARTYPANTS_DASHES |
@@ -128,7 +128,7 @@ func (b *Build) makePages(root string) (pages map[string]Page, all map[string][]
 				// NOTE(nishanths): The Renderer returned by HtmlRenderer is not safe for
 				// concurrent use, so create one each time.
 				page.Content = template.HTML(blackfriday.Markdown(
-					trimFrontMatter(buf.Bytes()), blackfriday.HtmlRenderer(blackfridayHtmlFlags, "", ""), blackfridayExtensions,
+					trimFrontMatter(buf.Bytes()), blackfriday.HtmlRenderer(blackfridayHTMLFlags, "", ""), blackfridayExtensions,
 				))
 			}()
 

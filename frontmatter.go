@@ -82,27 +82,25 @@ func (e *InvalidFrontMatterError) Error() string {
 	return s
 }
 
-func (f *FrontMatter) fromMap(m map[string]string) error {
+func (fm *FrontMatter) fromMap(m map[string]string) error {
 	v := m["draft"]
 	if v == "true" {
-		f.Draft = true
+		fm.Draft = true
 	} else if v != "" && v != "false" {
 		return &InvalidFrontMatterError{"draft", v, []string{"true", "false"}}
 	}
 
-	f.Title = m["title"]
+	fm.Title = m["title"]
 
 	if m["time"] != "" {
-		for i, format := range KnownTimeFormats {
+		for _, format := range KnownTimeFormats {
 			t, err := time.Parse(format, v)
 			if err == nil {
-				f.Time = t
+				fm.Time = t
 				break
 			}
-			if i == len(KnownTimeFormats)-1 {
-				return &InvalidFrontMatterError{"time", v, KnownTimeFormats}
-			}
 		}
+		return &InvalidFrontMatterError{"time", v, KnownTimeFormats}
 	}
 
 	return nil
