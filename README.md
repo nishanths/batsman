@@ -57,7 +57,7 @@ Normal *markdown* content goes _here_.
 
 All 3 fields are optional.
 
-* If `title` is absent, the filename is used.
+* If `title` is absent, the filename without extension is used.
 * If `time` is absent, the last modified time on the file is used. 
   <br>Additionally, `hh:mm:ss` and time zone are optional; if absent 10 AM UTC is used.
 * If `draft` is absent, it is assumed to be false.
