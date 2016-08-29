@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>{{ .Current.Title }}</title>
+<link rel="stylesheet" href="/css/style.css" />
+<div class="content">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-md-10 col-sm-10 col-lg-offset-2 col-md-offset-1 col-sm-offset-1">
+                <h2>{{ .Current.Title }}</h2>
+                {{ .Current.Content }}
+            </div>
+        </div>
+    </div>
+</div>
+</html>

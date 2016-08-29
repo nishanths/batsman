@@ -1,0 +1,32 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>batsman: static site generator</title>
+<link rel="stylesheet" href="/css/style.css" />
+<div class="content">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-md-10 col-sm-10 col-lg-offset-2 col-md-offset-1 col-sm-offset-1">
+                <h1>batsman: static site generator</h1>
+                <p>batsman aims to be a zero-configuration static site generator.
+                The <a href="/README">README</a> has a <a href="/README#quick-start">quick start</a> section and more.
+                The source code is on <a href="https://github.com/nishanths/batsman">GitHub</a> (MIT License).</p>
+
+                <p>You can install batsman by running:</p>
+                <pre><code>go get -u github.com/nishanths/batsman</pre></code>
+
+                <br>
+                <p>batsman automatically minifies generated content, has an HTTP server to serve generated content, and can regenerate content on change.</p>
+                <p>If you got to this page by running <code>batsman serve</code> locally, you can find the site source in <code>src</code> and the generated site in <code>build</code>.</p>
+
+                <h2>Commands</h2>
+                <ul>
+                    {{ range index .All "commands" }}
+                    <li><a href="{{ .Path }}">{{ .Title }}</a> (last modified {{ .Time.Format "2006-01-02" }})</li>
+                    {{ end }}
+                </ul>
+
+                <p><code>batsman -help</code> has more details.</p>
+            </div>
+        </div>
+    </div>
+</div>
